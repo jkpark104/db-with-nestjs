@@ -13,11 +13,14 @@ import { PopularProductsView } from './entities/popular-products.view-entity';
 @Injectable()
 export class Ch02TypeormService {
   constructor(
-    @InjectRepository(Category) private readonly categoryRepo: Repository<Category>,
-    @InjectRepository(ProductCategory) private readonly pcRepo: Repository<ProductCategory>,
+    @InjectRepository(Category)
+    private readonly categoryRepo: Repository<Category>,
+    @InjectRepository(ProductCategory)
+    private readonly pcRepo: Repository<ProductCategory>,
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
     @InjectRepository(Review) private readonly reviewRepo: Repository<Review>,
-    @InjectRepository(PopularProductsView) private readonly popularRepo: Repository<PopularProductsView>,
+    @InjectRepository(PopularProductsView)
+    private readonly popularRepo: Repository<PopularProductsView>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -29,17 +32,32 @@ export class Ch02TypeormService {
     return this.pcRepo.save({ productId, categoryId });
   }
 
-  async createOrder(userId: number, items: { productId: number; quantity: number; unitPrice: number }[]) {
-    const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  async createOrder(
+    userId: number,
+    items: { productId: number; quantity: number; unitPrice: number }[],
+  ) {
+    const totalAmount = items.reduce(
+      (sum, item) => sum + item.quantity * item.unitPrice,
+      0,
+    );
     const order = this.orderRepo.create({
-      userId, totalAmount, status: OrderStatus.PENDING,
+      userId,
+      totalAmount,
+      status: OrderStatus.PENDING,
       orderItems: items.map((item) => Object.assign(new OrderItem(), item)),
     });
     return this.orderRepo.save(order);
   }
 
-  async createReview(userId: number, productId: number, rating: number, content?: string) {
-    return this.reviewRepo.save(this.reviewRepo.create({ userId, productId, rating, content }));
+  async createReview(
+    userId: number,
+    productId: number,
+    rating: number,
+    content?: string,
+  ) {
+    return this.reviewRepo.save(
+      this.reviewRepo.create({ userId, productId, rating, content }),
+    );
   }
 
   // relations 옵션: JOIN하여 연관 데이터를 함께 가져옴
@@ -53,7 +71,8 @@ export class Ch02TypeormService {
 
   // Query Builder: SQL을 코드로 작성
   async findProductsByCategory(categoryId: number) {
-    return this.dataSource.getRepository(Product)
+    return this.dataSource
+      .getRepository(Product)
       .createQueryBuilder('p')
       .innerJoin('p.productCategories', 'pc')
       .where('pc.categoryId = :categoryId', { categoryId })

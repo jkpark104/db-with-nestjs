@@ -11,20 +11,40 @@ export class Ch02PrismaService {
   }
 
   async linkProductToCategory(productId: number, categoryId: number) {
-    return this.prisma.productCategory.create({ data: { productId, categoryId } });
+    return this.prisma.productCategory.create({
+      data: { productId, categoryId },
+    });
   }
 
   // Prisma의 강점: 중첩 create로 관계 데이터를 한 번에 생성
-  async createOrder(userId: number, items: { productId: number; quantity: number; unitPrice: number }[]) {
-    const totalAmount = items.reduce((sum, i) => sum + i.quantity * Number(i.unitPrice), 0);
+  async createOrder(
+    userId: number,
+    items: { productId: number; quantity: number; unitPrice: number }[],
+  ) {
+    const totalAmount = items.reduce(
+      (sum, i) => sum + i.quantity * Number(i.unitPrice),
+      0,
+    );
     return this.prisma.order.create({
-      data: { userId, totalAmount, status: 'PENDING', orderItems: { create: items } },
+      data: {
+        userId,
+        totalAmount,
+        status: 'PENDING',
+        orderItems: { create: items },
+      },
       include: { orderItems: true },
     });
   }
 
-  async createReview(userId: number, productId: number, rating: number, content?: string) {
-    return this.prisma.review.create({ data: { userId, productId, rating, content } });
+  async createReview(
+    userId: number,
+    productId: number,
+    rating: number,
+    content?: string,
+  ) {
+    return this.prisma.review.create({
+      data: { userId, productId, rating, content },
+    });
   }
 
   async findProductReviews(productId: number) {
