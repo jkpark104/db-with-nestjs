@@ -64,11 +64,23 @@ export class Ch02PrismaService {
   }
 
   async findPopularProducts() {
-    return this.prisma.$queryRaw`
+    // MySQL의 COUNT()가 BigInt를 반환하므로 Number로 변환해야 JSON 직렬화 가능
+    const rows = await this.prisma.$queryRaw<
+      {
+        productId: number;
+        productName: string;
+        avgRating: string;
+        reviewCount: bigint;
+      }[]
+    >`
       SELECT p.id AS productId, p.name AS productName,
         COALESCE(AVG(r.rating), 0) AS avgRating, COUNT(r.id) AS reviewCount
       FROM Product p LEFT JOIN Review r ON r.productId = p.id
       GROUP BY p.id, p.name ORDER BY avgRating DESC, reviewCount DESC
     `;
+    return rows.map((r) => ({
+      ...r,
+      reviewCount: Number(r.reviewCount),
+    }));
   }
 }

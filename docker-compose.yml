@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:16
     container_name: lecture-postgres
-    ports: ["5432:5432"]
+    ports: ["5433:5432"]
     environment:
       POSTGRES_DB: db_lecture
       POSTGRES_USER: lecture

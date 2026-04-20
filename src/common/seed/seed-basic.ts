@@ -7,6 +7,7 @@
 
 import { DataSource } from 'typeorm';
 import { PrismaClient } from '@prisma/client';
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { faker } from '@faker-js/faker/locale/ko';
 import { User } from '../../ch01-shop-open/typeorm/entities/user.entity';
 import { Product } from '../../ch01-shop-open/typeorm/entities/product.entity';
@@ -42,8 +43,15 @@ export async function seedBasic() {
   });
   await pg.initialize();
 
-  // -- Prisma (MySQL) 연결 --
-  const prisma = new PrismaClient();
+  // -- Prisma (MySQL) 연결 — Prisma v7은 Driver Adapter 필수 --
+  const adapter = new PrismaMariaDb({
+    host: process.env.MYSQL_HOST ?? 'localhost',
+    port: Number(process.env.MYSQL_PORT ?? 3306),
+    user: process.env.MYSQL_USER ?? 'lecture',
+    password: process.env.MYSQL_PASSWORD ?? 'lecture1234',
+    database: process.env.MYSQL_DATABASE ?? 'db_lecture',
+  });
+  const prisma = new PrismaClient({ adapter });
 
   console.log('Basic seed 시작...');
 

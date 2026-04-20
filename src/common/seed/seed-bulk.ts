@@ -7,6 +7,7 @@
 
 import { DataSource } from 'typeorm';
 import { PrismaClient } from '@prisma/client';
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { faker } from '@faker-js/faker/locale/ko';
 import { User } from '../../ch01-shop-open/typeorm/entities/user.entity';
 import { Product } from '../../ch01-shop-open/typeorm/entities/product.entity';
@@ -40,7 +41,14 @@ export async function seedBulk() {
     synchronize: true,
   });
   await pg.initialize();
-  const prisma = new PrismaClient();
+  const adapter = new PrismaMariaDb({
+    host: process.env.MYSQL_HOST ?? 'localhost',
+    port: Number(process.env.MYSQL_PORT ?? 3306),
+    user: process.env.MYSQL_USER ?? 'lecture',
+    password: process.env.MYSQL_PASSWORD ?? 'lecture1234',
+    database: process.env.MYSQL_DATABASE ?? 'db_lecture',
+  });
+  const prisma = new PrismaClient({ adapter });
 
   console.log('Bulk seed 시작 (시간이 걸립니다)...');
 

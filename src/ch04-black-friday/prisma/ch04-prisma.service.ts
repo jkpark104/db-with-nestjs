@@ -38,12 +38,20 @@ export class Ch04PrismaService {
   // type=range → 인덱스 범위 스캔 (빠름)
   // type=ALL → 전체 테이블 스캔 (느림)
   async explainPriceSearch(minPrice: number, maxPrice: number) {
-    const result = await this.prisma.$queryRaw`
+    const result = await this.prisma.$queryRaw<Record<string, unknown>[]>`
       EXPLAIN SELECT * FROM Product WHERE price BETWEEN ${minPrice} AND ${maxPrice} ORDER BY price LIMIT 20
     `;
+    // MySQL EXPLAIN 결과의 BigInt 필드를 Number로 변환 (JSON 직렬화 호환)
+    const plan = result.map((row) => {
+      const converted: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(row)) {
+        converted[k] = typeof v === 'bigint' ? Number(v) : v;
+      }
+      return converted;
+    });
     return {
       note: 'type=range → 인덱스 범위 스캔. type=ALL → 전체 스캔.',
-      plan: result,
+      plan,
     };
   }
 

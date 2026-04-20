@@ -17,9 +17,22 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 export class Ch06PrismaService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // -- BigInt 변환 유틸 -- MySQL의 COUNT/SUM이 BigInt를 반환하므로 필수
+  private convertBigInt(
+    rows: Record<string, unknown>[],
+  ): Record<string, unknown>[] {
+    return rows.map((row) => {
+      const converted: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(row)) {
+        converted[k] = typeof v === 'bigint' ? Number(v) : v;
+      }
+      return converted;
+    });
+  }
+
   // 월별 매출 — MySQL의 DATE_FORMAT 사용
   async getMonthlyRevenue() {
-    return this.prisma.$queryRaw`
+    const rows = await this.prisma.$queryRaw<Record<string, unknown>[]>`
       SELECT
         DATE_FORMAT(createdAt, '%Y-%m') AS month,
         SUM(totalAmount) AS revenue,
@@ -29,11 +42,12 @@ export class Ch06PrismaService {
       GROUP BY month
       ORDER BY month DESC
     `;
+    return this.convertBigInt(rows);
   }
 
   // 매출 TOP 10 — MySQL 구문
   async getTopProducts() {
-    return this.prisma.$queryRaw`
+    const rows = await this.prisma.$queryRaw<Record<string, unknown>[]>`
       SELECT
         oi.productId,
         p.name AS productName,
@@ -45,12 +59,13 @@ export class Ch06PrismaService {
       ORDER BY totalRevenue DESC
       LIMIT 10
     `;
+    return this.convertBigInt(rows);
   }
 
   // 윈도우 함수 (MySQL 8+ 지원)
   // RANK() OVER (PARTITION BY ... ORDER BY ...)
   async getCategoryRanking() {
-    return this.prisma.$queryRaw`
+    const rows = await this.prisma.$queryRaw<Record<string, unknown>[]>`
       SELECT sub.*, RANK() OVER (
         PARTITION BY sub.categoryName ORDER BY sub.totalRevenue DESC
       ) AS rankInCategory
@@ -66,6 +81,7 @@ export class Ch06PrismaService {
       ORDER BY sub.categoryName, rankInCategory
       LIMIT 50
     `;
+    return this.convertBigInt(rows);
   }
 
   // 인터랙티브 트랜잭션 — Prisma의 $transaction 사용
@@ -151,23 +167,32 @@ export class Ch06PrismaService {
 
   // MySQL 저장 프로시저 — PROCEDURE 키워드 사용
   // PostgreSQL과 달리 MySQL은 CREATE PROCEDURE를 사용합니다
+  //
+  // ⚠️ MySQL의 CREATE PROCEDURE는 prepared statement에서 실행 불가
+  //    → 실제 프로젝트에서는 마이그레이션 파일에서 프로시저를 생성합니다
+  //    → 여기서는 프로시저가 수행할 동일한 쿼리를 직접 실행하여 결과를 보여줍니다
+  //
+  // 프로시저 생성 SQL (마이그레이션에 넣을 내용):
+  //   DELIMITER //
+  //   CREATE PROCEDURE calculate_monthly_revenue(IN p_year INT, IN p_month INT)
+  //   BEGIN
+  //     SELECT COALESCE(SUM(totalAmount), 0) AS total_revenue,
+  //            COUNT(id) AS order_count
+  //     FROM `Order`
+  //     WHERE YEAR(createdAt) = p_year AND MONTH(createdAt) = p_month
+  //       AND status != 'CANCELLED';
+  //   END //
+  //   DELIMITER ;
   async callMonthlyRevenueProc(year: number, month: number) {
-    await this.prisma.$executeRaw`
-      CREATE PROCEDURE IF NOT EXISTS calculate_monthly_revenue(IN p_year INT, IN p_month INT)
-      BEGIN
-        SELECT
-          COALESCE(SUM(totalAmount), 0) AS total_revenue,
-          COUNT(id) AS order_count
-        FROM \`Order\`
-        WHERE YEAR(createdAt) = p_year AND MONTH(createdAt) = p_month
-          AND status != 'CANCELLED';
-      END
-    `.catch(() => {
-      /* 이미 존재하면 무시 */
-    });
-
-    return this.prisma
-      .$queryRaw`CALL calculate_monthly_revenue(${year}, ${month})`;
+    const rows = await this.prisma.$queryRaw<Record<string, unknown>[]>`
+      SELECT
+        COALESCE(SUM(totalAmount), 0) AS total_revenue,
+        COUNT(id) AS order_count
+      FROM \`Order\`
+      WHERE YEAR(createdAt) = ${year} AND MONTH(createdAt) = ${month}
+        AND status != 'CANCELLED'
+    `;
+    return this.convertBigInt(rows);
   }
 
   // MySQL JSON 검색 — JSON_EXTRACT 함수 사용
