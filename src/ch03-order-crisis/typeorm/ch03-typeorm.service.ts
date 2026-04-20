@@ -55,11 +55,8 @@ export class Ch03TypeormService {
   //   -> 주문 50건, 항목 평균 4개 = 1 + 50 + 200 = 251개 쿼리!
   async findOrdersNaive(): Promise<any[]> {
     const start = Date.now();
-    let queryCount = 0;
-
     // 1. 주문 목록만 가져옴 (관계 데이터 없이)
     const orders = await this.orderRepo.find({ take: 50 });
-    queryCount++;
 
     const result = [];
     for (const order of orders) {
@@ -68,20 +65,22 @@ export class Ch03TypeormService {
         where: { orderId: order.id },
         relations: ['product'], // 3. 각 항목의 상품 정보도 추가 쿼리
       });
-      queryCount += 1; // 실제로는 items 내 product 로딩으로 더 많은 쿼리 발생
+      // 실제로는 items 내 product 로딩으로 더 많은 쿼리 발생
 
       result.push({ ...order, orderItems: items });
     }
 
-    return [{
-      _meta: {
-        phase: 'naive',
-        estimatedQueries: `1 + ${orders.length} + a`,
-        elapsedMs: Date.now() - start,
-        warning: '이 방식은 프로덕션에서 절대 사용하지 마세요!',
+    return [
+      {
+        _meta: {
+          phase: 'naive',
+          estimatedQueries: `1 + ${orders.length} + a`,
+          elapsedMs: Date.now() - start,
+          warning: '이 방식은 프로덕션에서 절대 사용하지 마세요!',
+        },
+        data: result,
       },
-      data: result,
-    }];
+    ];
   }
 
   // ============================================================
@@ -99,14 +98,16 @@ export class Ch03TypeormService {
       // 'orderItems.product' -> 중첩 관계 (주문항목 -> 상품)까지 한 번에
     });
 
-    return [{
-      _meta: {
-        phase: 'eager',
-        queryCount: '3~4개 (자동 JOIN)',
-        elapsedMs: Date.now() - start,
+    return [
+      {
+        _meta: {
+          phase: 'eager',
+          queryCount: '3~4개 (자동 JOIN)',
+          elapsedMs: Date.now() - start,
+        },
+        data: orders,
       },
-      data: orders,
-    }];
+    ];
   }
 
   // ============================================================
@@ -132,15 +133,17 @@ export class Ch03TypeormService {
       .take(50)
       .getMany();
 
-    return [{
-      _meta: {
-        phase: 'join',
-        queryCount: '1개 (수동 JOIN)',
-        elapsedMs: Date.now() - start,
-        note: 'JOIN 방식은 N+1 대비 약 10배 이상 빠릅니다',
+    return [
+      {
+        _meta: {
+          phase: 'join',
+          queryCount: '1개 (수동 JOIN)',
+          elapsedMs: Date.now() - start,
+          note: 'JOIN 방식은 N+1 대비 약 10배 이상 빠릅니다',
+        },
+        data: orders,
       },
-      data: orders,
-    }];
+    ];
   }
 
   // ============================================================
@@ -176,13 +179,15 @@ export class Ch03TypeormService {
       orderItems: itemsByOrderId.get(order.id) || [],
     }));
 
-    return [{
-      _meta: {
-        phase: 'batch',
-        queryCount: '2~3개 (IN절 배치)',
-        elapsedMs: Date.now() - start,
+    return [
+      {
+        _meta: {
+          phase: 'batch',
+          queryCount: '2~3개 (IN절 배치)',
+          elapsedMs: Date.now() - start,
+        },
+        data: result,
       },
-      data: result,
-    }];
+    ];
   }
 }

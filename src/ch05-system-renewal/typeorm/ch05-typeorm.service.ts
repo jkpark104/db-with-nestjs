@@ -20,9 +20,12 @@ export class Ch05TypeormService {
   // 실행된 마이그레이션 목록 조회
   // migrations 테이블이 없으면 빈 배열을 반환합니다
   async getMigrationStatus() {
-    const migrations = await this.dataSource
-      .query(`SELECT * FROM migrations ORDER BY timestamp DESC`)
-      .catch(() => []);
+    const migrations: { id: number; timestamp: number; name: string }[] =
+      await this.dataSource
+        .query<
+          { id: number; timestamp: number; name: string }[]
+        >(`SELECT * FROM migrations ORDER BY timestamp DESC`)
+        .catch(() => []);
 
     return {
       note: '마이그레이션 = DB 스키마의 버전 관리. git처럼 변경 이력을 추적합니다.',

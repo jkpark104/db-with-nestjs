@@ -26,7 +26,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { Order } from '../../ch02-catalog/typeorm/entities/order.entity';
+import {
+  Order,
+  OrderStatus,
+} from '../../ch02-catalog/typeorm/entities/order.entity';
 import { Product } from '../../ch01-shop-open/typeorm/entities/product.entity';
 import { OrderItem } from '../../ch02-catalog/typeorm/entities/order-item.entity';
 
@@ -34,7 +37,8 @@ import { OrderItem } from '../../ch02-catalog/typeorm/entities/order-item.entity
 export class Ch06TypeormService {
   constructor(
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
-    @InjectRepository(Product) private readonly productRepo: Repository<Product>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -79,7 +83,14 @@ export class Ch06TypeormService {
   //   ORDER BY = 그룹 내 정렬 (매출 높은 순)
   //   RANK() = 순위 매기기 (동점이면 같은 순위, 다음 순위 건너뜀)
   async getCategoryRanking() {
-    return this.dataSource.query(`
+    return this.dataSource.query<
+      {
+        category_name: string;
+        product_name: string;
+        total_revenue: number;
+        rank_in_category: number;
+      }[]
+    >(`
       SELECT
         sub.category_name,
         sub.product_name,
@@ -107,7 +118,10 @@ export class Ch06TypeormService {
   // ── Part 3: 트랜잭션 — 주문 결제 처리 ──
   // 재고 차감 + 주문 생성을 하나의 트랜잭션으로 묶음
   // 하나라도 실패하면 전체 롤백!
-  async checkout(userId: number, items: { productId: number; quantity: number }[]) {
+  async checkout(
+    userId: number,
+    items: { productId: number; quantity: number }[],
+  ) {
     return this.dataSource.transaction(async (manager) => {
       const orderItems: OrderItem[] = [];
       let totalAmount = 0;
@@ -119,7 +133,9 @@ export class Ch06TypeormService {
         });
 
         if (product.stock < item.quantity) {
-          throw new Error(`재고 부족: ${product.name} (남은 수량: ${product.stock})`);
+          throw new Error(
+            `재고 부족: ${product.name} (남은 수량: ${product.stock})`,
+          );
         }
 
         // 재고 차감
@@ -139,7 +155,7 @@ export class Ch06TypeormService {
       const order = manager.create(Order, {
         userId,
         totalAmount,
-        status: 'PAID' as any,
+        status: OrderStatus.PAID,
         orderItems,
       });
 
@@ -175,7 +191,7 @@ export class Ch06TypeormService {
       const order = queryRunner.manager.create(Order, {
         userId,
         totalAmount: product.price * quantity,
-        status: 'PAID' as any,
+        status: OrderStatus.PAID,
         orderItems: [
           Object.assign(new OrderItem(), {
             productId,
@@ -218,10 +234,9 @@ export class Ch06TypeormService {
       $$ LANGUAGE plpgsql;
     `);
 
-    return this.dataSource.query(
-      `SELECT * FROM calculate_monthly_revenue($1, $2)`,
-      [year, month],
-    );
+    return this.dataSource.query<
+      { total_revenue: number; order_count: number }[]
+    >(`SELECT * FROM calculate_monthly_revenue($1, $2)`, [year, month]);
   }
 
   // ── Part 6: JSONB 검색 (PostgreSQL 전용) ──
@@ -229,7 +244,9 @@ export class Ch06TypeormService {
   // 예: metadata->>'color' = 'red' → metadata에서 color 키의 값이 red인 행
   // PostgreSQL의 JSONB는 GIN 인덱스를 걸 수 있어 검색이 빠릅니다
   async searchByMetadata(key: string, value: string) {
-    return this.dataSource.query(
+    return this.dataSource.query<
+      { id: number; name: string; price: number; metadata: unknown }[]
+    >(
       `SELECT id, name, price, metadata
        FROM products
        WHERE metadata ->> $1 = $2

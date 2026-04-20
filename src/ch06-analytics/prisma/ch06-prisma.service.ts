@@ -70,10 +70,17 @@ export class Ch06PrismaService {
 
   // 인터랙티브 트랜잭션 — Prisma의 $transaction 사용
   // 콜백 내 모든 작업이 하나의 트랜잭션으로 묶입니다
-  async checkout(userId: number, items: { productId: number; quantity: number }[]) {
+  async checkout(
+    userId: number,
+    items: { productId: number; quantity: number }[],
+  ) {
     return this.prisma.$transaction(async (tx) => {
       let totalAmount = 0;
-      const orderItems: { productId: number; quantity: number; unitPrice: number }[] = [];
+      const orderItems: {
+        productId: number;
+        quantity: number;
+        unitPrice: number;
+      }[] = [];
 
       for (const item of items) {
         const product = await tx.product.findUniqueOrThrow({
@@ -114,7 +121,9 @@ export class Ch06PrismaService {
   // Prisma는 네이티브 FOR UPDATE를 지원하지 않으므로 $queryRaw 사용
   async checkoutWithLock(userId: number, productId: number, quantity: number) {
     return this.prisma.$transaction(async (tx) => {
-      const [product] = await tx.$queryRaw<any[]>`
+      const [product] = await tx.$queryRaw<
+        { id: number; stock: number; price: number; name: string }[]
+      >`
         SELECT * FROM Product WHERE id = ${productId} FOR UPDATE
       `;
 
@@ -157,7 +166,8 @@ export class Ch06PrismaService {
       /* 이미 존재하면 무시 */
     });
 
-    return this.prisma.$queryRaw`CALL calculate_monthly_revenue(${year}, ${month})`;
+    return this.prisma
+      .$queryRaw`CALL calculate_monthly_revenue(${year}, ${month})`;
   }
 
   // MySQL JSON 검색 — JSON_EXTRACT 함수 사용

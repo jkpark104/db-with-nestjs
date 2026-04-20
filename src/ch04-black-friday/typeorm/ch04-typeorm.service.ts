@@ -34,7 +34,8 @@ import type { Cache } from 'cache-manager';
 @Injectable()
 export class Ch04TypeormService {
   constructor(
-    @InjectRepository(Product) private readonly productRepo: Repository<Product>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
     private readonly dataSource: DataSource,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
@@ -60,7 +61,7 @@ export class Ch04TypeormService {
   // EXPLAIN ANALYZE — 실행 계획 분석
   // Index Scan이 보이면 인덱스가 잘 작동하는 것입니다
   async explainPriceSearch(minPrice: number, maxPrice: number) {
-    const result = await this.dataSource.query(
+    const result = await this.dataSource.query<{ 'QUERY PLAN': string }[]>(
       `EXPLAIN ANALYZE SELECT * FROM products WHERE price BETWEEN $1 AND $2 ORDER BY price LIMIT 20`,
       [minPrice, maxPrice],
     );
@@ -116,7 +117,8 @@ export class Ch04TypeormService {
     }
 
     const products = await qb.orderBy('p.id', 'ASC').take(limit).getMany();
-    const nextCursor = products.length > 0 ? products[products.length - 1].id : null;
+    const nextCursor =
+      products.length > 0 ? products[products.length - 1].id : null;
 
     return { data: products, nextCursor };
   }
@@ -124,7 +126,7 @@ export class Ch04TypeormService {
   // ── Part 4: 풀텍스트 검색 (PostgreSQL) ──
   // ILIKE를 사용한 패턴 매칭 검색 (대소문자 무시)
   async fulltextSearch(query: string) {
-    return this.dataSource.query(
+    return this.dataSource.query<{ id: number; name: string; price: number }[]>(
       `SELECT id, name, price
        FROM products
        WHERE name ILIKE $1 OR description ILIKE $1
