@@ -24,3 +24,5 @@ yarn-error.log*
 
 # tests
 coverage/
+
+/generated/prisma
