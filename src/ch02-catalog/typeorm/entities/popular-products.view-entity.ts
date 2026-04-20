@@ -17,14 +17,14 @@ import { ViewEntity, ViewColumn } from 'typeorm';
 })
 export class PopularProductsView {
   @ViewColumn()
-  productId: number;
+  productId!: number;
 
   @ViewColumn()
-  productName: string;
+  productName!: string;
 
   @ViewColumn()
-  avgRating: number;
+  avgRating!: number;
 
   @ViewColumn()
-  reviewCount: number;
+  reviewCount!: number;
 }

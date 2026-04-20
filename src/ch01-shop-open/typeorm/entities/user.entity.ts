@@ -26,26 +26,26 @@ export class User {
   // 모든 테이블에는 각 행(row)을 고유하게 식별하는 컬럼이 필요합니다.
   // 'increment' → 1, 2, 3, ... 자동 증가하는 정수 ID
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   // ── 이메일 (유니크 제약) ──
   // unique: true → 같은 이메일로 두 명의 유저를 만들 수 없음
   @Column({ type: 'varchar', length: 255, unique: true })
-  email: string;
+  email!: string;
 
   @Column({ type: 'varchar', length: 100 })
-  name: string;
+  name!: string;
 
   // CreateDateColumn → INSERT 시 자동으로 현재 시간이 들어감
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   // ── 관계 필드 (Ch02에서 활성화) ──
   // 한 명의 유저는 여러 개의 주문을 가질 수 있습니다 (1:N)
   @OneToMany(() => Order, (order) => order.user)
-  orders: Order[];
+  orders!: Order[];
 
   // 한 명의 유저는 여러 개의 리뷰를 작성할 수 있습니다 (1:N)
   @OneToMany(() => Review, (review) => review.user)
-  reviews: Review[];
+  reviews!: Review[];
 }

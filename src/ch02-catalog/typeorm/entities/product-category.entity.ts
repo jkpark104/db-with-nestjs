@@ -8,16 +8,20 @@ import { Category } from './category.entity';
 @Entity('product_categories')
 export class ProductCategory {
   @PrimaryColumn()
-  productId: number;
+  productId!: number;
 
   @PrimaryColumn()
-  categoryId: number;
+  categoryId!: number;
 
-  @ManyToOne(() => Product, (product) => product.productCategories, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Product, (product) => product.productCategories, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'productId' })
-  product: Product;
+  product!: Product;
 
-  @ManyToOne(() => Category, (category) => category.productCategories, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Category, (category) => category.productCategories, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'categoryId' })
-  category: Category;
+  category!: Category;
 }

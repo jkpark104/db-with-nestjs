@@ -6,11 +6,11 @@ import { ProductCategory } from './product-category.entity';
 @Entity('categories')
 export class Category {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column({ type: 'varchar', length: 100, unique: true })
-  name: string;
+  name!: string;
 
   @OneToMany(() => ProductCategory, (pc) => pc.category)
-  productCategories: ProductCategory[];
+  productCategories!: ProductCategory[];
 }
