@@ -1,0 +1,26 @@
+# compiled output
+dist/
+
+# dependencies
+node_modules/
+
+# environment
+.env
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# debug
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# tests
+coverage/
