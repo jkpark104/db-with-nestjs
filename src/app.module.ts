@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { Ch01Module } from './ch01-shop-open/ch01.module';
+import { Ch02Module } from './ch02-catalog/ch02.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { Ch01Module } from './ch01-shop-open/ch01.module';
     }),
     PrismaModule,
     Ch01Module,
+    Ch02Module,
   ],
 })
 export class AppModule {}
