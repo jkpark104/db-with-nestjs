@@ -21,8 +21,9 @@ export class Ch05PrismaService {
   // _prisma_migrations 테이블이 없으면 빈 배열을 반환합니다
   async getMigrationStatus() {
     const migrations = await this.prisma
-      .$queryRaw`SELECT * FROM _prisma_migrations ORDER BY finished_at DESC`
-      .catch(() => []);
+      .$queryRaw`SELECT * FROM _prisma_migrations ORDER BY finished_at DESC`.catch(
+      () => [],
+    );
 
     return {
       note: 'Prisma Migrate는 schema.prisma 변경을 SQL 마이그레이션 파일로 자동 생성합니다.',

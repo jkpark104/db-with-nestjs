@@ -24,7 +24,10 @@ export class Ch04TypeormController {
     @Query('minPrice') minPrice: string,
     @Query('maxPrice') maxPrice: string,
   ) {
-    return this.service.searchByPriceRange(Number(minPrice) || 0, Number(maxPrice) || 999999);
+    return this.service.searchByPriceRange(
+      Number(minPrice) || 0,
+      Number(maxPrice) || 999999,
+    );
   }
 
   // GET /ch04/typeorm/products/explain?minPrice=1000&maxPrice=5000
@@ -34,7 +37,10 @@ export class Ch04TypeormController {
     @Query('minPrice') minPrice: string,
     @Query('maxPrice') maxPrice: string,
   ) {
-    return this.service.explainPriceSearch(Number(minPrice) || 0, Number(maxPrice) || 999999);
+    return this.service.explainPriceSearch(
+      Number(minPrice) || 0,
+      Number(maxPrice) || 999999,
+    );
   }
 
   // GET /ch04/typeorm/orders/filter?from=2024-01-01&to=2024-12-31&status=PAID

@@ -32,14 +32,26 @@ export class Ch06PrismaController {
 
   // POST /ch06/prisma/orders/checkout — 트랜잭션 결제
   @Post('orders/checkout')
-  checkout(@Body() body: { userId: number; items: { productId: number; quantity: number }[] }) {
+  checkout(
+    @Body()
+    body: {
+      userId: number;
+      items: { productId: number; quantity: number }[];
+    },
+  ) {
     return this.service.checkout(body.userId, body.items);
   }
 
   // POST /ch06/prisma/orders/concurrent-checkout — 비관적 락 결제
   @Post('orders/concurrent-checkout')
-  concurrentCheckout(@Body() body: { userId: number; productId: number; quantity: number }) {
-    return this.service.checkoutWithLock(body.userId, body.productId, body.quantity);
+  concurrentCheckout(
+    @Body() body: { userId: number; productId: number; quantity: number },
+  ) {
+    return this.service.checkoutWithLock(
+      body.userId,
+      body.productId,
+      body.quantity,
+    );
   }
 
   // GET /ch06/prisma/analytics/monthly-proc?year=2024&month=3

@@ -34,10 +34,12 @@ export class Ch03PrismaService {
       result.push({ ...order, orderItems: items });
     }
 
-    return [{
-      _meta: { phase: 'naive', elapsedMs: Date.now() - start },
-      data: result,
-    }];
+    return [
+      {
+        _meta: { phase: 'naive', elapsedMs: Date.now() - start },
+        data: result,
+      },
+    ];
   }
 
   // Phase 2: include로 해결
@@ -52,10 +54,12 @@ export class Ch03PrismaService {
       },
     });
 
-    return [{
-      _meta: { phase: 'include', elapsedMs: Date.now() - start },
-      data: orders,
-    }];
+    return [
+      {
+        _meta: { phase: 'include', elapsedMs: Date.now() - start },
+        data: orders,
+      },
+    ];
   }
 
   // Phase 3: select로 필요한 필드만
@@ -80,10 +84,12 @@ export class Ch03PrismaService {
       },
     });
 
-    return [{
-      _meta: { phase: 'select', elapsedMs: Date.now() - start },
-      data: orders,
-    }];
+    return [
+      {
+        _meta: { phase: 'select', elapsedMs: Date.now() - start },
+        data: orders,
+      },
+    ];
   }
 
   // Phase 4: Raw JOIN (최대 성능)
@@ -103,9 +109,11 @@ export class Ch03PrismaService {
       LIMIT 200
     `;
 
-    return [{
-      _meta: { phase: 'rawJoin', elapsedMs: Date.now() - start },
-      data: orders,
-    }];
+    return [
+      {
+        _meta: { phase: 'rawJoin', elapsedMs: Date.now() - start },
+        data: orders,
+      },
+    ];
   }
 }

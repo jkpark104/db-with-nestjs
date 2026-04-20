@@ -39,7 +39,13 @@ export class Ch06TypeormController {
   // POST /ch06/typeorm/orders/checkout — 트랜잭션 주문 결제
   // Body: { userId: 1, items: [{ productId: 1, quantity: 2 }] }
   @Post('orders/checkout')
-  checkout(@Body() body: { userId: number; items: { productId: number; quantity: number }[] }) {
+  checkout(
+    @Body()
+    body: {
+      userId: number;
+      items: { productId: number; quantity: number }[];
+    },
+  ) {
     return this.service.checkout(body.userId, body.items);
   }
 
@@ -49,7 +55,11 @@ export class Ch06TypeormController {
   concurrentCheckout(
     @Body() body: { userId: number; productId: number; quantity: number },
   ) {
-    return this.service.checkoutWithLock(body.userId, body.productId, body.quantity);
+    return this.service.checkoutWithLock(
+      body.userId,
+      body.productId,
+      body.quantity,
+    );
   }
 
   // GET /ch06/typeorm/analytics/monthly-function?year=2024&month=3

@@ -41,7 +41,10 @@ export class Ch04PrismaService {
     const result = await this.prisma.$queryRaw`
       EXPLAIN SELECT * FROM Product WHERE price BETWEEN ${minPrice} AND ${maxPrice} ORDER BY price LIMIT 20
     `;
-    return { note: 'type=range → 인덱스 범위 스캔. type=ALL → 전체 스캔.', plan: result };
+    return {
+      note: 'type=range → 인덱스 범위 스캔. type=ALL → 전체 스캔.',
+      plan: result,
+    };
   }
 
   // 커서 기반 페이지네이션 (Prisma 네이티브 지원)
@@ -52,7 +55,8 @@ export class Ch04PrismaService {
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       orderBy: { id: 'asc' },
     });
-    const nextCursor = products.length > 0 ? products[products.length - 1].id : null;
+    const nextCursor =
+      products.length > 0 ? products[products.length - 1].id : null;
     return { data: products, nextCursor };
   }
 

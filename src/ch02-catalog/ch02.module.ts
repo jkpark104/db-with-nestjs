@@ -12,7 +12,16 @@ import { Ch02PrismaService } from './prisma/ch02-prisma.service';
 import { Ch02PrismaController } from './prisma/ch02-prisma.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Category, ProductCategory, Order, OrderItem, Review, PopularProductsView])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Category,
+      ProductCategory,
+      Order,
+      OrderItem,
+      Review,
+      PopularProductsView,
+    ]),
+  ],
   controllers: [Ch02TypeormController, Ch02PrismaController],
   providers: [Ch02TypeormService, Ch02PrismaService],
 })

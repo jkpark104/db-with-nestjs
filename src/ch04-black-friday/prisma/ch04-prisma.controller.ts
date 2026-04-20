@@ -15,19 +15,28 @@ export class Ch04PrismaController {
   // GET /ch04/prisma/products/search?minPrice=1000&maxPrice=5000
   @Get('products/search')
   search(@Query('minPrice') min: string, @Query('maxPrice') max: string) {
-    return this.service.searchByPriceRange(Number(min) || 0, Number(max) || 999999);
+    return this.service.searchByPriceRange(
+      Number(min) || 0,
+      Number(max) || 999999,
+    );
   }
 
   // GET /ch04/prisma/products/explain?minPrice=1000&maxPrice=5000
   @Get('products/explain')
   explain(@Query('minPrice') min: string, @Query('maxPrice') max: string) {
-    return this.service.explainPriceSearch(Number(min) || 0, Number(max) || 999999);
+    return this.service.explainPriceSearch(
+      Number(min) || 0,
+      Number(max) || 999999,
+    );
   }
 
   // GET /ch04/prisma/products/cursor?cursor=100&limit=20
   @Get('products/cursor')
   cursor(@Query('cursor') c: string, @Query('limit') l: string) {
-    return this.service.findProductsByCursor(c ? Number(c) : undefined, Number(l) || 20);
+    return this.service.findProductsByCursor(
+      c ? Number(c) : undefined,
+      Number(l) || 20,
+    );
   }
 
   // GET /ch04/prisma/products/fulltext?q=키워드

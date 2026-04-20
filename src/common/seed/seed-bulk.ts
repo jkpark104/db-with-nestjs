@@ -12,7 +12,10 @@ import { User } from '../../ch01-shop-open/typeorm/entities/user.entity';
 import { Product } from '../../ch01-shop-open/typeorm/entities/product.entity';
 import { Category } from '../../ch02-catalog/typeorm/entities/category.entity';
 import { ProductCategory } from '../../ch02-catalog/typeorm/entities/product-category.entity';
-import { Order, OrderStatus } from '../../ch02-catalog/typeorm/entities/order.entity';
+import {
+  Order,
+  OrderStatus,
+} from '../../ch02-catalog/typeorm/entities/order.entity';
 import { OrderItem } from '../../ch02-catalog/typeorm/entities/order-item.entity';
 import { Review } from '../../ch02-catalog/typeorm/entities/review.entity';
 import 'dotenv/config';
@@ -25,7 +28,15 @@ export async function seedBulk() {
     database: process.env.PG_DATABASE,
     username: process.env.PG_USERNAME,
     password: process.env.PG_PASSWORD,
-    entities: [User, Product, Category, ProductCategory, Order, OrderItem, Review],
+    entities: [
+      User,
+      Product,
+      Category,
+      ProductCategory,
+      Order,
+      OrderItem,
+      Review,
+    ],
     synchronize: true,
   });
   await pg.initialize();
@@ -93,7 +104,10 @@ export async function seedBulk() {
           unitPrice: Number(faker.commerce.price({ min: 1000, max: 50000 })),
         };
       });
-      const totalAmount = items.reduce((s, it) => s + it.quantity * it.unitPrice, 0);
+      const totalAmount = items.reduce(
+        (s, it) => s + it.quantity * it.unitPrice,
+        0,
+      );
       const status = faker.helpers.arrayElement(statuses);
 
       await pg.getRepository(Order).save({
