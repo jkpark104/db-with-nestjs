@@ -16,7 +16,11 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  OneToMany,
 } from 'typeorm';
+import { ProductCategory } from '../../../ch02-catalog/typeorm/entities/product-category.entity';
+import { OrderItem } from '../../../ch02-catalog/typeorm/entities/order-item.entity';
+import { Review } from '../../../ch02-catalog/typeorm/entities/review.entity';
 
 @Entity('products')
 export class Product {
@@ -43,4 +47,17 @@ export class Product {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  // ── 관계 필드 (Ch02에서 활성화) ──
+  // 하나의 상품은 여러 카테고리에 속할 수 있습니다 (N:M, 중간 테이블 경유)
+  @OneToMany(() => ProductCategory, (pc) => pc.product)
+  productCategories: ProductCategory[];
+
+  // 하나의 상품은 여러 주문 항목에 포함될 수 있습니다 (1:N)
+  @OneToMany(() => OrderItem, (item) => item.product)
+  orderItems: OrderItem[];
+
+  // 하나의 상품은 여러 리뷰를 가질 수 있습니다 (1:N)
+  @OneToMany(() => Review, (review) => review.product)
+  reviews: Review[];
 }

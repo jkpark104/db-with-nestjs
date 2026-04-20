@@ -17,6 +17,8 @@ import {
   CreateDateColumn,
   OneToMany,
 } from 'typeorm';
+import { Order } from '../../../ch02-catalog/typeorm/entities/order.entity';
+import { Review } from '../../../ch02-catalog/typeorm/entities/review.entity';
 
 @Entity('users')
 export class User {
@@ -40,10 +42,10 @@ export class User {
 
   // ── 관계 필드 (Ch02에서 활성화) ──
   // 한 명의 유저는 여러 개의 주문을 가질 수 있습니다 (1:N)
-  // 아직 Order 엔티티가 없으므로 주석 처리. Ch02에서 연결합니다.
-  // @OneToMany(() => Order, (order) => order.user)
-  // orders: Order[];
+  @OneToMany(() => Order, (order) => order.user)
+  orders: Order[];
 
-  // @OneToMany(() => Review, (review) => review.user)
-  // reviews: Review[];
+  // 한 명의 유저는 여러 개의 리뷰를 작성할 수 있습니다 (1:N)
+  @OneToMany(() => Review, (review) => review.user)
+  reviews: Review[];
 }
