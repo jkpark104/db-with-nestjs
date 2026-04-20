@@ -26,6 +26,9 @@ model Product {
   categories  ProductCategory[]
   orderItems  OrderItem[]
   reviews     Review[]
+
+  @@index([price])       // Ch04: 가격 검색 인덱스
+  @@fulltext([name])     // Ch04: 풀텍스트 인덱스
 }
 
 model Category {
@@ -50,6 +53,8 @@ model Order {
   createdAt   DateTime    @default(now())
   user        User        @relation(fields: [userId], references: [id])
   orderItems  OrderItem[]
+
+  @@index([createdAt, status])  // Ch04: 복합 인덱스 (날짜+상태 필터링)
 }
 
 model OrderItem {

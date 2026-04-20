@@ -17,11 +17,16 @@ import {
   Column,
   CreateDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { ProductCategory } from '../../../ch02-catalog/typeorm/entities/product-category.entity';
 import { OrderItem } from '../../../ch02-catalog/typeorm/entities/order-item.entity';
 import { Review } from '../../../ch02-catalog/typeorm/entities/review.entity';
 
+// Ch04: 가격 검색용 B-Tree 인덱스 — 가격 범위 쿼리(BETWEEN)를 빠르게 합니다
+@Index('idx_product_price', ['price'])
+// Ch04: 풀텍스트 검색 인덱스 — 상품명 키워드 검색에 사용됩니다
+@Index('idx_product_name_fulltext', ['name'], { fulltext: true })
 @Entity('products')
 export class Product {
   @PrimaryGeneratedColumn()
