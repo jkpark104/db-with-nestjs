@@ -1,0 +1,8 @@
+# Good — 명명된 쿼리, 변수 사용, 필요한 필드만 선택.
+query GetProductCard($id: Int!) {
+  product(id: $id) {
+    id
+    name
+    price
+  }
+}
