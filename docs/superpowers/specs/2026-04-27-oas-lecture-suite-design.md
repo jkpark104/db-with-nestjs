@@ -20,6 +20,23 @@ OpenAPI Specification은 "사후 문서"가 아니다. API의 설계를 BE/FE/QA
 
 ---
 
+## Contract Invariants (전 챕터 공통 계약 기준)
+
+학습 시나리오 전반에서 흔들리지 않아야 하는 명명·구조 표준. 챕터에 따라 *의도적으로 위반*되어 학습 포인트를 만든다(Ch01의 README 예시, Ch06의 응답 위반 등). 단, 도메인 모델·YAML SoT·codegen 산출물의 정의는 항상 이 표준을 따른다.
+
+| 필드/규칙 | 표준값 | 비고 |
+|----------|-------|------|
+| 가격 필드명 | `priceInWon` (정수, KRW 원 단위) | Ch01 README는 의도적으로 `price`로 어긋남. Ch06 BE는 의도적으로 `price`로 회귀 |
+| 시간 필드명 | `createdAt` (ISO 8601 문자열) | YAML schema에서 `format: date-time` |
+| ID 필드 | `number` (정수, 양수) | UUID 미사용 — 학습 단순화 |
+| 통화 단위 | KRW 원, 정수 | 소수점/통화 변환 미고려 |
+| 응답 헤더 | `x-contract-status` 1종 | 챕터별 값만 변동 (아래 [측정 장치](#측정-장치-x-contract-status-응답-헤더) 참조) |
+| OAS 버전 | OpenAPI 3.1 | JSON Schema 2020-12 슈퍼셋 — `examples` 활용 |
+
+이 표는 모든 챕터의 "정상 응답"에 대한 단일 진실의 원천이다. 학습 코드가 이를 벗어날 때는 반드시 챕터 본문에 *의도적 위반*임을 명시한다.
+
+---
+
 ## 핵심 학습 목표
 
 1. **사후 문서의 구조적 한계를 코드로 체감한다** — README의 cURL 예시가 실제 API와 어긋나는 순간, 문서 표류가 추상적 개념이 아닌 실제 버그임을 깨닫는다.
@@ -53,7 +70,7 @@ OpenAPI Specification은 "사후 문서"가 아니다. API의 설계를 BE/FE/QA
 | `@faker-js/faker` | ^10.x | 결정론적 시드 | 전 챕터 |
 | `class-validator` / `class-transformer` | 기존 | DTO 검증 | 전 챕터 |
 
-**신규 추가 없음** — `@nestjs/swagger`만 추가.
+**BE 측 신규 의존성**: `@nestjs/swagger`만 추가. 그 외 NestJS 11 / `class-validator` / `@faker-js/faker`는 기존 모노레포에서 그대로 재활용한다.
 
 ### FE (신규 — `apps/web`)
 
@@ -80,10 +97,10 @@ OpenAPI Specification은 "사후 문서"가 아니다. API의 설계를 BE/FE/QA
 
 ## 도메인 모델
 
-GraphQL 수트와 동형. `libs/mock-data/src/domain.ts` 재활용.
+GraphQL 수트와 동형. `libs/mock-data/src/domain.ts`를 본 OAS 분기에서 **수정하여 재활용**한다.
 
 ```typescript
-// libs/mock-data/src/domain.ts (기존 파일 재활용 — 수정 없음)
+// libs/mock-data/src/domain.ts (Ch01~Ch03: 직접 정의)
 export interface User {
   id: number;
   email: string;
@@ -94,7 +111,7 @@ export interface User {
 export interface Product {
   id: number;
   name: string;
-  price: number;
+  priceInWon: number;       // ← Contract Invariant: 가격은 priceInWon (KRW, 정수)
   stock: number;
   description: string;
 }
@@ -105,7 +122,7 @@ export interface Order {
   id: number;
   userId: number;
   status: OrderStatus;
-  totalAmount: number;
+  totalAmountInWon: number; // ← KRW 정수, priceInWon과 일관
   createdAt: string;
 }
 
@@ -114,11 +131,28 @@ export interface OrderItem {
   orderId: number;
   productId: number;
   quantity: number;
-  unitPrice: number;
+  unitPriceInWon: number;
 }
 ```
 
-Ch04부터는 `contracts/openapi.yaml`이 이 인터페이스들의 SoT가 되고, `domain.ts`는 YAML에서 codegen된 타입의 re-export로 교체된다.
+**`domain.ts` 수정 정책 (챕터 진화)**:
+- **Ch01~Ch03**: 위 형태의 **수기 정의** 유지. `priceInWon` 등 표준 사용.
+- **Ch04 이후**: `contracts/openapi.yaml`이 SoT가 되며, `domain.ts`는 다음과 같이 codegen 타입의 **re-export 모듈**로 교체:
+
+```typescript
+// libs/mock-data/src/domain.ts (Ch04+: re-export)
+import type { components } from '../../../contracts/generated/be-types';
+
+export type User       = components['schemas']['User'];
+export type Product    = components['schemas']['Product'];
+export type Order      = components['schemas']['Order'];
+export type OrderStatus= components['schemas']['OrderStatus'];
+export type OrderItem  = components['schemas']['OrderItem'];
+```
+
+이 전환은 Ch04 챕터 시연의 일부다 — "어느 순간 SoT가 코드에서 YAML로 옮겨가는가"를 학습자가 직접 경험.
+
+> 학습 시 BE/FE 모두 `libs/mock-data/src/domain.ts`만 import한다. Ch04 전환 후에도 import 경로는 동일 — *내부 구현만 re-export로 바뀐다*. 이로써 Ch01-03 코드는 Ch04 진입 시 import 변경 없이 컴파일된다.
 
 ---
 
@@ -183,19 +217,20 @@ db-with-nestjs/                          # 레포 루트 (브랜치: feat/oas-le
 │   └── orders-subgraph/   (기존 — 보존)
 │
 ├── libs/
-│   └── mock-data/                       # 기존 재활용 (수정 없음)
+│   └── mock-data/                       # 기존 재활용 — domain.ts만 수정
 │       └── src/
-│           ├── domain.ts               → Ch04부터 YAML codegen re-export로 교체
-│           ├── seed.ts                 faker.seed(42)
-│           ├── store.ts
-│           ├── mock-repository.ts
-│           └── call-counter.ts
+│           ├── domain.ts               # Ch01-03: priceInWon 표준으로 직접 정의
+│           │                           # Ch04+: contracts/generated/be-types.ts re-export
+│           ├── seed.ts                 # 기존 faker.seed(42)
+│           ├── store.ts                # 기존
+│           ├── mock-repository.ts      # 기존
+│           └── call-counter.ts         # 기존
 │
 ├── contracts/                           # 신규 (Ch04부터 등장)
 │   ├── openapi.yaml                    # SoT — 수기 작성 (Ch04에서 처음 등장)
-│   └── generated/                      # codegen 산출물 (.gitignore 후보)
-│       ├── be-types.ts                 # openapi-typescript 출력
-│       └── fe-client.ts                # openapi-fetch 타입 (동일 사양)
+│   └── generated/                      # codegen 산출물 (.gitignore 처리)
+│       └── be-types.ts                 # openapi-typescript 단일 산출물
+│                                       # (BE/FE 양쪽 동일 파일을 import)
 │
 ├── operations/                          # 기존 GraphQL .graphql 보존
 │
@@ -233,6 +268,14 @@ db-with-nestjs/                          # 레포 루트 (브랜치: feat/oas-le
 
 **FE 측 시각화**: `apps/web/src/lib/contract-debug.tsx` — 응답 헤더를 읽어 화면 우하단에 배지로 표시 (Ch02부터 활성화).
 
+**FE의 응답 헤더 검출 방법**:
+- React Query의 `meta`/`onSuccess` 또는 `openapi-fetch` 응답의 `response.headers.get('x-contract-status')`로 추출
+- 추출한 값을 React Context로 broadcast → `<ContractDebugBadge>` 컴포넌트가 우하단에 표시
+- Ch05 (Prism 모드)는 BE 헤더가 없으므로, FE는 **`baseUrl` 호스트가 4010이면** `served-by=prism-mock`을 *클라이언트에서 합성*해 표시 (실제 헤더 부재를 학습자에게 명시)
+- Ch03/Ch06 의 "타입/응답 미스매치 감지"는 다음 두 단계 검출:
+  1. **컴파일 타임**: TypeScript 타입 차이 (Ch04+ codegen 적용 후 구조적 비교)
+  2. **런타임**: FE에서 `Object.keys(response)` 와 spec 기반 키 셋을 비교, 차이를 패널에 빨간색으로 표시
+
 ### 결정론적 시드
 
 `faker.seed(42)` — `libs/mock-data/src/seed.ts` 기존 코드 재활용. 재시작해도 동일 Product/User/Order 데이터.
@@ -257,6 +300,18 @@ export const ACTIVE_CHAPTER = 'ch04'; // 변경으로 토글
 // 또는: VITE_CHAPTER env 변수 사용
 ```
 
+### CORS / Base URL 정책
+
+| 챕터 | BE 포트 | FE 포트 | Mock 포트 | FE `baseUrl` (Vite env) | BE CORS origin |
+|------|---------|---------|----------|------------------------|---------------|
+| Ch01 | 3000 | — (FE 없음) | — | — | — |
+| Ch02-04, Ch06 | 3000 | 5173 | — | `http://localhost:3000` | `http://localhost:5173` |
+| Ch05 | 3000 (선택, 꺼도 됨) | 5173 | 4010 | `http://localhost:4010` (Prism) | (BE 켜면) `http://localhost:5173` |
+
+`apps/lecture/src/main.ts`에서 `app.enableCors({ origin: 'http://localhost:5173', exposedHeaders: ['x-contract-status'] })` 설정. `exposedHeaders` 누락 시 FE에서 `x-contract-status` 헤더를 읽지 못하므로 필수.
+
+FE는 `apps/web/.env` (또는 `.env.<chapter>`)에 `VITE_API_BASE_URL`을 정의. `active-chapter.ts`가 `import.meta.env.VITE_API_BASE_URL`을 통해 baseUrl을 결정.
+
 ---
 
 ## 챕터 상세 설계
@@ -276,14 +331,21 @@ export const ACTIVE_CHAPTER = 'ch04'; // 변경으로 토글
 **시연**:
 ```bash
 pnpm start:dev
-# 실제 응답 확인 (priceInWon)
+# 실제 응답 확인 (priceInWon — Contract Invariant 표준)
 curl http://localhost:3000/products/1
+# {"id":1,"name":"...","priceInWon":9900,"stock":...}
 
-# README 예시 (price 필드 — 어긋남)
-# → 학습자가 직접 불일치 발견
+# README의 cURL 예시는 일부러 'price'로 어긋나게 둔다
+# → 학습자가 직접 불일치를 손으로 발견
 curl http://localhost:3000/products/1 -i | grep x-contract-status
 # x-contract-status: not-tracked
 ```
+
+**Done-Definition (Ch01)**:
+- `curl http://localhost:3000/products/1`이 200을 반환하고 `priceInWon` 필드 포함
+- 응답 헤더 `x-contract-status: not-tracked`
+- README의 cURL 예시는 `price` 표기 (의도적 표류)
+- `apps/lecture/src/ch01-doc-drift/`에 OAS 관련 의존(`@nestjs/swagger`) **사용 없음**
 
 **주석 강조점**: `// ⚠️ README의 'price' 예시와 다름. 이것이 사후 문서의 구조적 문제다.`
 
@@ -307,12 +369,21 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 pnpm start:dev
 open http://localhost:3000/api   # Swagger UI 확인
 
+# OAS YAML 추출 (Code-First 산출물)
+pnpm swagger:export             # → contracts/openapi.from-code.yaml 생성
+
 # FE 실행
 pnpm start:web
 open http://localhost:5173        # FE에서 상품 목록 확인
 curl http://localhost:3000/products/1 -i | grep x-contract-status
 # x-contract-status: code-derived
 ```
+
+**Done-Definition (Ch02)**:
+- `http://localhost:3000/api` Swagger UI에서 `Product`/`User` 스키마 확인
+- 응답 헤더 `x-contract-status: code-derived`
+- `pnpm swagger:export` 실행 후 `contracts/openapi.from-code.yaml`이 `priceInWon` 필드 포함
+- FE는 수기 정의된 `interface Product { priceInWon: number; ... }`로 fetch — 컴파일 가능, 런타임 정상
 
 **주석 강조점**: `// ✅ 문서가 코드와 동기화되었다. 그러나 SoT는 여전히 TS 코드다.`
 
@@ -335,10 +406,18 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 ```bash
 pnpm start:dev
 pnpm start:web
-# FE에서 카테고리 필드 undefined 확인
-# BE OAS yaml 변경: pnpm run swagger:export
-# FE 타입 수동 복사 시뮬레이션 (얼마나 번거로운가)
+# 1) FE 화면: category 컬럼이 빈 셀(undefined) 렌더링
+# 2) BE OAS yaml 갱신: pnpm swagger:export
+# 3) 학습자가 손으로 FE 타입 복사 — 번거로움 체감
+curl http://localhost:3000/products/1 -i | grep x-contract-status
+# x-contract-status: code-derived
 ```
+
+**Done-Definition (Ch03)**:
+- BE 응답 JSON에 `category` 필드 포함
+- FE 화면에 `category`가 `undefined`로 렌더링 (또는 `contract-debug` 패널이 빨간색 미스매치 알림)
+- `pnpm swagger:export`로 yaml 갱신은 가능하나 **FE 타입 자동 동기화는 불가능**임을 학습자가 확인
+- 응답 헤더 `x-contract-status: code-derived`
 
 **주석 강조점**: `// ❌ BE가 category 추가했지만 FE는 모른다. 이것이 Code-First의 직렬 의존 문제다.`
 
@@ -351,10 +430,12 @@ pnpm start:web
 **학습 목표**: "OAS YAML이 SoT가 되면 BE·FE 코드 생성이 동기화되고, 계약 변경이 컴파일 오류로 즉시 드러난다."
 
 **구현 포인트**:
-- `contracts/openapi.yaml` 작성 (Product/User/Order 스키마 + 엔드포인트)
-- `scripts/gen-types.ts`: `openapi-typescript` 실행 → `contracts/generated/be-types.ts` + `fe-client.ts` 생성
-- BE DTO: `contracts/generated/be-types.ts`에서 타입 import (더 이상 `@ApiProperty` 단독 작성 않음)
-- FE: `openapi-fetch` `createClient<paths>` + generated types 사용
+- `contracts/openapi.yaml` 작성 (Product/User/Order 스키마 + 엔드포인트, OpenAPI 3.1)
+- 단일 codegen 명령 `pnpm gen:types` → `contracts/generated/be-types.ts` 한 파일 생성 (`openapi-typescript`)
+- BE DTO: `be-types.ts`의 `components['schemas']['Product']` 타입을 직접 import. `@ApiProperty` 데코레이터는 **더 이상 신규 추가하지 않음** — 기존 Ch02-03 의존성은 학습 비교를 위해 남겨둠
+- FE: `openapi-fetch`의 `createClient<paths>()` + 같은 `be-types.ts` 의 `paths` 타입 import
+- `libs/mock-data/src/domain.ts`를 codegen re-export 형태로 교체 (위 [도메인 모델](#도메인-모델) 참조)
+- `prebuild`/`pretest` 훅에서 `gen:types` 자동 실행 — `contracts/generated/`가 .gitignore이므로 빌드 전 항상 재생성
 - `x-contract-status: spec-derived`
 
 **시연**:
@@ -367,6 +448,12 @@ pnpm start:web
 curl http://localhost:3000/products/1 -i | grep x-contract-status
 # x-contract-status: spec-derived
 ```
+
+**Done-Definition (Ch04)**:
+- `contracts/openapi.yaml` 존재, `info.version`/`paths`/`components.schemas` 정의
+- `pnpm gen:types` 실행 후 `contracts/generated/be-types.ts` 생성 + `priceInWon` 등 표준 필드 포함
+- BE/FE 양쪽이 같은 `be-types.ts`를 import — `Product` 타입 정의가 어느 한 곳에서만 변경되어도 양쪽 빌드가 동시 실패
+- `pnpm build` 통과 (BE), `pnpm build:web` 통과 (FE)
 
 **주석 강조점**: `// ✅ YAML이 SoT. pnpm gen:types 한 번으로 BE·FE 타입 동시 갱신.`
 
@@ -383,18 +470,25 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 - FE `ch05-parallel-blocking/ProductList.tsx`: `VITE_API_BASE_URL` env 변수로 baseUrl 전환
   - 개발 시: `http://localhost:4010` (Prism)
   - 통합 시: `http://localhost:3000` (실 BE)
-- Prism이 OAS `examples` 필드에서 동적 응답 생성
-- BE 종료 후에도 FE 전체 시나리오 동작 확인
+- Prism은 OAS `examples`/`schema` 기반으로 동적 응답 생성. **Prism은 사용자 정의 헤더를 자동 주입하지 않으므로** `x-contract-status: spec-derived; served-by=prism-mock`은 FE에서 합성:
+  - `apps/web/src/lib/api-client.ts` 의 fetch 미들웨어가 `baseUrl` 호스트가 `localhost:4010`이면 응답 헤더 부재 시 `served-by=prism-mock`을 추가해 `contract-debug` 패널에 전달
+- BE 종료 상태(포트 3000 closed)에서도 FE 전체 시나리오 동작 확인
 
 **시연**:
 ```bash
 # BE 끄기 (아무 것도 실행하지 않음)
 pnpm mock:start   # Prism 4010 포트
-pnpm start:web    # FE는 4010으로 전환
+pnpm start:web    # FE는 .env로 4010 baseUrl 사용
 open http://localhost:5173   # BE 없이 FE 완전 동작
 ```
 
-**주석 강조점**: `// ✅ BE 없이 FE 동작. prism이 openapi.yaml examples로 응답 생성.`
+**Done-Definition (Ch05)**:
+- BE를 끈 상태에서 FE Product 목록·상세 페이지가 정상 렌더링 (Prism이 schema 기반 응답)
+- `VITE_API_BASE_URL=http://localhost:4010`이 `apps/web/.env.ch05`로 분리
+- FE `contract-debug` 배지에 `spec-derived; served-by=prism-mock` 표시 (FE 합성)
+- BE를 다시 켜고 baseUrl을 3000으로 되돌리면 동일 코드가 실 BE 응답으로 동작
+
+**주석 강조점**: `// ✅ BE 없이 FE 동작. prism이 openapi.yaml schema로 응답 생성.`
 
 ---
 
@@ -405,31 +499,74 @@ open http://localhost:5173   # BE 없이 FE 완전 동작
 **학습 목표**: "Contract Testing은 BE 실응답을 OAS와 자동 비교한다. 사양 위반은 배포 후가 아닌 PR 단계에서 차단된다."
 
 **구현 포인트**:
-- BE `ch06-runtime-drift/products.controller.ts`: **의도적 위반** — `priceInWon` 대신 `price` 반환
-- `test/contract/products.contract.spec.ts`:
+- BE `ch06-runtime-drift/products.controller.ts`: **의도적 위반 1건** — `priceInWon` 대신 `price` 반환 (코드 주석으로 위반 명시)
+- 추가 엔드포인트 2개로 검증 다양성 확보:
+  - `GET /products` (정상 — 통과 케이스)
+  - `GET /users/:id` (선택 필드 누락 케이스 — `email` optional 처리 등 OAS `nullable` 학습)
+- `test/contract/products.contract.spec.ts` (OpenAPI 3.x용 옵션 정정):
   ```typescript
-  // openapi-response-validator로 실응답 검증
+  // OAS3에서는 components.schemas를 그대로 components: { schemas } 로 전달
   import OpenAPIResponseValidator from 'openapi-response-validator';
   import * as yaml from 'js-yaml';
-  import * as fs from 'fs';
+  import * as fs from 'node:fs';
+  import request from 'supertest';
+  import { Test } from '@nestjs/testing';
+  import { Ch06RuntimeDriftModule } from '../../apps/lecture/src/ch06-runtime-drift/ch06.module';
 
-  const spec = yaml.load(fs.readFileSync('contracts/openapi.yaml', 'utf8'));
-  const validator = new OpenAPIResponseValidator({ responses: spec.paths['/products/{id}'].get.responses, definitions: spec.components.schemas });
-  const errors = validator.validateResponse(200, actualResponseBody);
-  expect(errors).toBeNull(); // 위반 시 fail
+  const spec = yaml.load(
+    fs.readFileSync('contracts/openapi.yaml', 'utf8'),
+  ) as any;
+
+  describe('Contract: GET /products/:id', () => {
+    let app: import('@nestjs/common').INestApplication;
+
+    beforeAll(async () => {
+      const moduleRef = await Test.createTestingModule({
+        imports: [Ch06RuntimeDriftModule],
+      }).compile();
+      app = moduleRef.createNestApplication();
+      await app.init();
+    });
+
+    afterAll(async () => app.close());
+
+    it('matches OAS schema (priceInWon 표준)', async () => {
+      const res = await request(app.getHttpServer()).get('/products/1');
+      expect(res.status).toBe(200);
+
+      const validator = new OpenAPIResponseValidator({
+        responses: spec.paths['/products/{id}'].get.responses,
+        components: { schemas: spec.components.schemas }, // OAS 3.x
+      });
+      const errors = validator.validateResponse(200, res.body);
+      expect(errors).toBeUndefined(); // 위반 시 errors 객체 반환
+    });
+  });
   ```
-- `x-contract-status: spec-derived; runtime-validated=violation` (위반 상태)
-- **시연 흐름**: 위반 상태로 테스트 fail 확인 → `price` → `priceInWon` 수정 → 테스트 통과 → `runtime-validated=ok`
+- `x-contract-status: spec-derived; runtime-validated=ok|violation` 상태 결정 방식:
+  1. `pnpm test:contract` 실행 후 결과를 `.contract-status.json`에 기록 (`{ "status": "ok" | "violation", "ranAt": "..." }`)
+  2. `apps/lecture/src/common/contract-status.interceptor.ts`가 부팅 시 이 파일을 읽어 헤더 suffix로 추가
+  3. 파일이 없거나 5분 초과 시 `runtime-validated=stale`로 표시 (학습자에게 재실행 유도)
+- **시연 흐름**: 위반 상태로 테스트 fail → 헤더 `=violation` → `price` → `priceInWon` 수정 → 테스트 통과 → 헤더 `=ok`
 
 **시연**:
 ```bash
 pnpm start:dev     # Ch06 활성화 (의도적 위반 포함)
 pnpm test:contract # FAIL — price vs priceInWon 위반 검출
 # 코드 수정 후
-pnpm test:contract # PASS
+pnpm test:contract # PASS — .contract-status.json 갱신
+# BE 재시작 (interceptor가 새 파일 읽음)
+pnpm start:dev
 curl http://localhost:3000/products/1 -i | grep x-contract-status
 # x-contract-status: spec-derived; runtime-validated=ok
 ```
+
+**Done-Definition (Ch06)**:
+- 최소 3개 엔드포인트에 대한 contract test 존재 (`/products/:id`, `/products`, `/users/:id`)
+- 의도적 위반 상태에서 `pnpm test:contract` exit code 1 + `priceInWon` 관련 에러 메시지
+- 수정 후 `pnpm test:contract` exit code 0
+- 응답 헤더가 위반 시 `runtime-validated=violation`, 통과 시 `runtime-validated=ok`로 변동
+- CI 워크플로(`.github/workflows/contract.yml` 또는 README 안내)에서 `pnpm test:contract`가 PR 단계에 실행
 
 **주석 강조점**: `// ❌ price 필드가 YAML의 priceInWon과 불일치. Contract test가 이를 잡아낸다.`
 
@@ -448,19 +585,53 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 
 ---
 
+## 챕터별 Done-Definition 요약 표
+
+| Ch | 헤더 기대값 | FE 결과 | 테스트/명령 결과 | 핵심 명령 |
+|----|------------|--------|----------------|----------|
+| 01 | `not-tracked` | (FE 없음) | README cURL 예시 ↔ 실응답 불일치 학습자가 발견 | `curl :3000/products/1` |
+| 02 | `code-derived` | Swagger UI 보고 수기 fetch 코드 동작 | `swagger:export` → yaml 산출 | `pnpm swagger:export` |
+| 03 | `code-derived` | `category` 필드 `undefined` 렌더링, `contract-debug`가 미스매치 표시 | yaml 갱신은 가능, FE 타입 자동 동기화 불가 | `pnpm swagger:export` |
+| 04 | `spec-derived` | codegen 타입으로 typesafe fetch | `pnpm gen:types` 후 BE/FE 동시 컴파일 | `pnpm gen:types && pnpm build` |
+| 05 | `spec-derived; served-by=prism-mock` (FE 합성) | BE 종료 상태에서도 Product 목록·상세 정상 | Prism이 schema 기반 응답 생성 | `pnpm mock:start` |
+| 06 | 위반 시 `runtime-validated=violation`, 수정 후 `=ok` | 동일 FE | `test:contract` exit code 1→0 | `pnpm test:contract` |
+
+---
+
+## package.json 전략
+
+본 spec은 **루트 단일 `package.json`** 전략을 채택한다. 이유:
+- 학습자 인지 부담 최소화 (하나의 `pnpm install`로 모든 의존성 해결)
+- BE/FE/계약/도구 의존성이 한곳에서 가시화 — `dependencies`/`devDependencies` 비교가 학습 자료
+- `apps/web/package.json`은 **생성하지 않음** (Vite는 루트 `vite.config.ts`로 동작 가능)
+
+향후 별도 분리 필요 시 `pnpm workspace` 또는 `apps/web/package.json` 분리는 학습 외 영역으로 별도 마이그레이션.
+
+---
+
 ## package.json 스크립트 추가
 
 ```json
 {
   "scripts": {
+    "start:dev": "nest start --watch",
     "start:web": "vite --config apps/web/vite.config.ts",
+    "build": "nest build",
     "build:web": "vite build --config apps/web/vite.config.ts",
+    "swagger:export": "ts-node scripts/export-swagger.ts",
     "gen:types": "openapi-typescript contracts/openapi.yaml -o contracts/generated/be-types.ts",
+    "prebuild": "pnpm gen:types",
+    "pretest": "pnpm gen:types",
     "mock:start": "prism mock contracts/openapi.yaml --port 4010",
-    "test:contract": "jest --testPathPattern=contract"
+    "test:contract": "jest --config jest.contract.config.ts"
   }
 }
 ```
+
+**보조 스크립트 메모**:
+- `scripts/export-swagger.ts`: NestJS app을 init만 시키고 `SwaggerModule.createDocument()` 결과를 `contracts/openapi.from-code.yaml`로 저장 (Ch02-03용, Ch04 SoT YAML과 분리)
+- `prebuild`/`pretest`: `contracts/generated/`가 .gitignore이므로 빌드/테스트 직전 항상 재생성 보장
+- `jest.contract.config.ts`: `testMatch: ['**/test/contract/**/*.spec.ts']`로 contract 테스트만 분리 실행
 
 ---
 
@@ -485,9 +656,101 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 
 ```
 contracts/generated/
+contracts/openapi.from-code.yaml
+.contract-status.json
 apps/web/dist/
 apps/web/node_modules/
 ```
+
+---
+
+## `contracts/openapi.yaml` 최소 샘플 (Ch04에서 처음 등장)
+
+```yaml
+openapi: 3.1.0
+info:
+  title: OAS Lecture API
+  version: 1.0.0
+  description: 학습용 이커머스 API (Single Source of Truth)
+servers:
+  - url: http://localhost:3000
+paths:
+  /products/{id}:
+    get:
+      summary: 상품 단건 조회
+      operationId: getProductById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+              examples:
+                sample:
+                  value:
+                    id: 1
+                    name: "사이다 1.5L"
+                    priceInWon: 2900
+                    stock: 42
+                    description: "탄산음료"
+        '404':
+          description: Not Found
+  /products:
+    get:
+      summary: 상품 목록
+      operationId: listProducts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Product' }
+components:
+  schemas:
+    Product:
+      type: object
+      required: [id, name, priceInWon, stock, description]
+      properties:
+        id:          { type: integer, minimum: 1 }
+        name:        { type: string, minLength: 1 }
+        priceInWon:  { type: integer, minimum: 0, description: "KRW 정수" }
+        stock:       { type: integer, minimum: 0 }
+        description: { type: string }
+```
+
+이 샘플은 Ch04에서 학습자가 직접 작성/확장하는 출발점. Ch06 contract test가 이 스키마(`priceInWon` 표준)와 BE 실응답을 비교해 위반을 잡는다.
+
+---
+
+## CI 워크플로 (최소)
+
+```yaml
+# .github/workflows/contract.yml
+name: Contract
+on: [pull_request]
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm gen:types          # YAML → 타입 재생성
+      - run: pnpm build              # BE/FE 컴파일 (prebuild가 gen:types 재실행 OK)
+      - run: pnpm test:contract      # 위반 시 PR 차단
+```
+
+학습 자료 시연 시에는 GitHub Actions 미설정 환경도 고려해 README에 동일 명령(`pnpm test:contract`)을 강조한다.
 
 ---
 
@@ -520,6 +783,12 @@ pnpm test:contract
 ## 알려진 트레이드오프
 
 1. **단일 `package.json` vs pnpm workspace**: 단일 유지. FE/BE 의존성 분리 필요 시 `apps/web/package.json` 별도 분리 가능. 본 spec은 단일 기준.
-2. **Code-First 잔존**: `@nestjs/swagger`는 Ch02-03 교육용으로 남음. Ch04 이후에도 의존성 제거 안 함 — 학습자 비교용.
+2. **Code-First 잔존 (Ch04 이후 `@nestjs/swagger` 경계)**:
+   - Ch01: 사용 안 함
+   - Ch02-03: `@ApiProperty` 데코레이터 적극 사용 + Swagger UI 마운트
+   - Ch04+: **신규 `@ApiProperty` 작성 금지**. 의존성은 비교 시연을 위해 패키지에 남겨두되 컨트롤러/DTO 코드에서 사용하지 않음. 학습자가 "Code-First 산출물(`pnpm swagger:export`)"과 "Design-First SoT(`contracts/openapi.yaml`)"를 직접 비교 가능
 3. **Mock 서버 3 포트**: BE(3000)/FE(5173)/Prism(4010) — 터미널 3개 필요. README에 명시.
-4. **`openapi-response-validator` vs Schemathesis**: 전자 선택. Schemathesis(Python)는 학습 범위 초과.
+4. **Prism 헤더 합성**: Prism은 사용자 정의 헤더를 자동 주입하지 않음. Ch05의 `served-by=prism-mock` 표시는 FE 측에서 baseUrl 검사 후 합성 (실제 BE 헤더가 아님을 학습자에게 명시).
+5. **`runtime-validated` 헤더의 신선도**: Ch06에서 `.contract-status.json`을 부팅 시 1회 읽음. 5분 초과 시 `=stale` 표시로 재실행 유도. 진정한 실시간 검증은 학습 범위 외.
+6. **`openapi-response-validator` vs Schemathesis**: 전자 선택. Schemathesis(Python)는 학습 범위 초과.
+7. **OpenAPI 3.1 vs 3.0**: 3.1 채택 (JSON Schema 2020-12 슈퍼셋). 일부 도구(특히 구버전 SwaggerUI/codegen)는 3.0만 지원하므로 시연 환경 도구 버전을 README에 명시.
