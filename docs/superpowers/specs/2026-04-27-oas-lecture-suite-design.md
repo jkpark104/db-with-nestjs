@@ -455,6 +455,18 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 - BE/FE 양쪽이 같은 `be-types.ts`를 import — `Product` 타입 정의가 어느 한 곳에서만 변경되어도 양쪽 빌드가 동시 실패
 - `pnpm build` 통과 (BE), `pnpm build:web` 통과 (FE)
 
+**런타임 검증의 한계 (학습 포인트)**:
+
+`openapi-typescript`는 **TypeScript 타입만** 생성한다 — 런타임에 존재하지 않는다. 따라서 NestJS의 `ValidationPipe`(클래스 + 데코레이터 기반)가 직접 동작하지 않는다. 본 챕터는 다음 절충안을 채택:
+
+| 검증 위치 | 방법 | 비고 |
+|----------|------|------|
+| **요청 본문/쿼리** | 컨트롤러에서 AJV로 `components.schemas` 직접 검증 (`ajv.compile(spec.components.schemas.Product)`) | 또는 학습 단순화를 위해 Ch04에선 검증 생략하고 Ch05 Prism이 422를 대신 보여주도록 위임 |
+| **응답 본문** | Ch06 contract test가 `openapi-response-validator`로 검증 | 런타임이 아닌 테스트 시점 |
+| **Code-First 비교** | `class-validator` + `@ApiProperty`는 Ch02-03 한정 | Ch04+에선 데코레이터 신규 작성 금지 (트레이드오프 #2) |
+
+> **학습 포인트**: 타입 codegen은 런타임 검증을 *주지 않는다*. SoT YAML이 있어도 검증은 별도 도구(AJV/Prism/contract test) 조합이 필요하다는 사실을 Ch04에서 명시한다.
+
 **주석 강조점**: `// ✅ YAML이 SoT. pnpm gen:types 한 번으로 BE·FE 타입 동시 갱신.`
 
 ---
@@ -487,10 +499,19 @@ open http://localhost:5173   # BE 없이 FE 완전 동작
 ```
 
 **Done-Definition (Ch05)**:
-- BE를 끈 상태에서 FE Product 목록·상세 페이지가 정상 렌더링 (Prism이 schema 기반 응답)
+- BE를 끈 상태에서 FE Product 목록·상세 페이지가 정상 렌더링 (Prism이 examples/schema 기반 응답)
 - `VITE_API_BASE_URL=http://localhost:4010`이 `apps/web/.env.ch05`로 분리
 - FE `contract-debug` 배지에 `spec-derived; served-by=prism-mock` 표시 (FE 합성)
 - BE를 다시 켜고 baseUrl을 3000으로 되돌리면 동일 코드가 실 BE 응답으로 동작
+
+**보너스 학습 포인트 (Prism 요청 검증)**:
+
+Prism mock은 OAS의 `parameters`/`requestBody` 스키마를 만족하지 않는 요청에 자동으로 422를 반환한다. 학습 시연으로:
+```bash
+curl 'http://localhost:4010/products/abc' -i
+# HTTP/1.1 422 Unprocessable Entity — id 가 integer 타입이 아님
+```
+이는 "SoT가 yaml이면 잘못된 호출은 BE 코드 없이도 차단된다"를 보여준다.
 
 **주석 강조점**: `// ✅ BE 없이 FE 동작. prism이 openapi.yaml schema로 응답 생성.`
 
@@ -597,7 +618,7 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 | 02 | `code-derived` | Swagger UI 보고 수기 fetch 코드 동작 | `swagger:export` → yaml 산출 | `pnpm swagger:export` |
 | 03 | `code-derived` | `category` 필드 `undefined` 렌더링, `contract-debug`가 미스매치 표시 | yaml 갱신은 가능, FE 타입 자동 동기화 불가 | `pnpm swagger:export` |
 | 04 | `spec-derived` | codegen 타입으로 typesafe fetch | `pnpm gen:types` 후 BE/FE 동시 컴파일 | `pnpm gen:types && pnpm build` |
-| 05 | `spec-derived; served-by=prism-mock` (FE 합성) | BE 종료 상태에서도 Product 목록·상세 정상 | Prism이 schema 기반 응답 생성 | `pnpm mock:start` |
+| 05 | `spec-derived; served-by=prism-mock` (FE 합성) | BE 종료 상태에서도 Product 목록·상세 정상 | Prism이 examples 우선·schema 폴백으로 응답 생성 | `pnpm mock:start` |
 | 06 | 위반 시 `runtime-validated=violation`, 수정 후 `=ok` | 동일 FE | `test:contract` exit code 1→0 | `pnpm test:contract` |
 
 ---
@@ -623,7 +644,7 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
     "build": "nest build",
     "build:web": "vite build --config apps/web/vite.config.ts",
     "swagger:export": "ts-node scripts/export-swagger.ts",
-    "gen:types": "openapi-typescript contracts/openapi.yaml -o contracts/generated/be-types.ts",
+    "gen:types": "node scripts/gen-types.mjs",
     "prebuild": "pnpm gen:types",
     "pretest": "pnpm gen:types",
     "mock:start": "prism mock contracts/openapi.yaml --port 4010",
@@ -632,9 +653,28 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 }
 ```
 
+**`scripts/gen-types.mjs` (yaml 없을 때 안전하게 skip)**:
+```javascript
+// scripts/gen-types.mjs — Ch01-03에서는 contracts/openapi.yaml이 없으므로 skip
+import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+
+const yaml = 'contracts/openapi.yaml';
+if (!existsSync(yaml)) {
+  console.log(`[gen:types] ${yaml} 없음 — skip (Ch01~Ch03 단계로 간주)`);
+  process.exit(0);
+}
+const r = spawnSync(
+  'npx',
+  ['openapi-typescript', yaml, '-o', 'contracts/generated/be-types.ts'],
+  { stdio: 'inherit' },
+);
+process.exit(r.status ?? 0);
+```
+
 **보조 스크립트 메모**:
 - `scripts/export-swagger.ts`: NestJS app을 init만 시키고 `SwaggerModule.createDocument()` 결과를 `contracts/openapi.from-code.yaml`로 저장 (Ch02-03용, Ch04 SoT YAML과 분리)
-- `prebuild`/`pretest`: `contracts/generated/`가 .gitignore이므로 빌드/테스트 직전 항상 재생성 보장
+- `prebuild`/`pretest` 훅은 yaml이 없는 Ch01-03에서도 *빌드를 깨뜨리지 않는다* — 위 스크립트가 즉시 0 exit
 - `jest.contract.config.ts`: `testMatch: ['**/test/contract/**/*.spec.ts']`로 contract 테스트만 분리 실행
 
 ---
@@ -668,7 +708,9 @@ apps/web/node_modules/
 
 ---
 
-## `contracts/openapi.yaml` 최소 샘플 (Ch04에서 처음 등장)
+## `contracts/openapi.yaml` 샘플 (Ch04에서 처음 등장)
+
+`domain.ts`(Ch04+ re-export)가 참조하는 모든 스키마 — `Product`, `User`, `Order`, `OrderStatus`, `OrderItem`, `ErrorResponse` — 를 포함해야 codegen 결과가 BE/FE 양쪽에서 컴파일된다. 학습자는 이 샘플을 그대로 두고 시작하며, Ch04~Ch06 진행 중 `category` 등 필드 추가로 확장한다.
 
 ```yaml
 openapi: 3.1.0
@@ -678,35 +720,15 @@ info:
   description: 학습용 이커머스 API (Single Source of Truth)
 servers:
   - url: http://localhost:3000
+security: []                # 본 학습은 인증 미사용 (의도적 단순화)
+tags:
+  - { name: products, description: 상품 }
+  - { name: users,    description: 사용자 }
+  - { name: orders,   description: 주문 }
 paths:
-  /products/{id}:
-    get:
-      summary: 상품 단건 조회
-      operationId: getProductById
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer, minimum: 1 }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-              examples:
-                sample:
-                  value:
-                    id: 1
-                    name: "사이다 1.5L"
-                    priceInWon: 2900
-                    stock: 42
-                    description: "탄산음료"
-        '404':
-          description: Not Found
   /products:
     get:
+      tags: [products]
       summary: 상품 목록
       operationId: listProducts
       responses:
@@ -717,6 +739,37 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Product' }
+  /products/{id}:
+    get:
+      tags: [products]
+      summary: 상품 단건 조회
+      operationId: getProductById
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+              examples:
+                sample:
+                  value: { id: 1, name: "사이다 1.5L", priceInWon: 2900, stock: 42, description: "탄산음료" }
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /users/{id}:
+    get:
+      tags: [users]
+      summary: 사용자 단건 조회
+      operationId: getUserById
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '404': { description: Not Found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
 components:
   schemas:
     Product:
@@ -728,9 +781,45 @@ components:
         priceInWon:  { type: integer, minimum: 0, description: "KRW 정수" }
         stock:       { type: integer, minimum: 0 }
         description: { type: string }
+    User:
+      type: object
+      required: [id, email, name, createdAt]
+      properties:
+        id:        { type: integer, minimum: 1 }
+        email:     { type: string, format: email }
+        name:      { type: string, minLength: 1 }
+        createdAt: { type: string, format: date-time }
+    OrderStatus:
+      type: string
+      enum: [PENDING, PAID, SHIPPED, DELIVERED, CANCELLED]
+    Order:
+      type: object
+      required: [id, userId, status, totalAmountInWon, createdAt]
+      properties:
+        id:               { type: integer, minimum: 1 }
+        userId:           { type: integer, minimum: 1 }
+        status:           { $ref: '#/components/schemas/OrderStatus' }
+        totalAmountInWon: { type: integer, minimum: 0 }
+        createdAt:        { type: string, format: date-time }
+    OrderItem:
+      type: object
+      required: [id, orderId, productId, quantity, unitPriceInWon]
+      properties:
+        id:             { type: integer, minimum: 1 }
+        orderId:        { type: integer, minimum: 1 }
+        productId:      { type: integer, minimum: 1 }
+        quantity:       { type: integer, minimum: 1 }
+        unitPriceInWon: { type: integer, minimum: 0 }
+    ErrorResponse:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode: { type: integer }
+        message:    { type: string }
+        error:      { type: string }
 ```
 
-이 샘플은 Ch04에서 학습자가 직접 작성/확장하는 출발점. Ch06 contract test가 이 스키마(`priceInWon` 표준)와 BE 실응답을 비교해 위반을 잡는다.
+이 샘플은 Ch04에서 학습자가 그대로 두고 시작하는 baseline. Ch06 contract test는 정상 응답(200)뿐 아니라 404 응답이 `ErrorResponse` 스키마와 일치하는지도 검증한다.
 
 ---
 
@@ -797,3 +886,5 @@ pnpm test:contract
 6. **`openapi-response-validator` vs Schemathesis**: 전자 선택. Schemathesis(Python)는 학습 범위 초과.
 7. **OpenAPI 3.1 vs 3.0**: 3.1 채택 (JSON Schema 2020-12 슈퍼셋). 일부 도구(특히 구버전 SwaggerUI/codegen)는 3.0만 지원하므로 시연 환경 도구 버전을 README에 명시.
 8. **버전 정책**: 본 spec의 의존성 버전(`^X.x`)은 *작성 시점(2026-04-27) 기준 호환되는 메이저 라인*. 실제 `pnpm install` 시 lock 파일이 진실의 원천. NestJS 11 ↔ `@nestjs/swagger` v11+ 같은 메이저 호환성 제약이 우선한다.
+9. **타입 codegen ≠ 런타임 검증**: `openapi-typescript`는 컴파일 타임 타입만 생성. NestJS `ValidationPipe`는 클래스+데코레이터를 요구하므로 Ch04+ 런타임 검증은 AJV 또는 Prism request validation으로 분담 (Ch04 본문 표 참조). 런타임 클래스 코드젠을 원하면 `@hey-api/openapi-ts` 등 별도 도구가 필요 — 본 spec 범위 외.
+10. **`prebuild`/`pretest` 안전성**: `gen:types` 훅이 Ch01-03에서 yaml 부재로 깨지지 않도록 `scripts/gen-types.mjs`에서 파일 존재 시만 실행. 학습자가 Ch01만 켜고 빌드해도 동작.
