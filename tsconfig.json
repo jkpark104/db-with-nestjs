@@ -1,8 +1,7 @@
 {
   "compilerOptions": {
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "resolvePackageJsonExports": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
     "esModuleInterop": true,
     "isolatedModules": true,
     "declaration": true,
@@ -14,13 +13,16 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
-
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": true,
     "strictBindCallApply": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@app/mock-data": ["libs/mock-data/src"],
+      "@app/mock-data/*": ["libs/mock-data/src/*"]
+    }
   }
 }
