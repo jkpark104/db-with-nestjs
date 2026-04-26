@@ -13,7 +13,7 @@
     "lecture": {
       "type": "application",
       "root": "apps/lecture",
-      "entryFile": "main",
+      "entryFile": "apps/lecture/src/main",
       "sourceRoot": "apps/lecture/src",
       "compilerOptions": {
         "tsConfigPath": "apps/lecture/tsconfig.app.json"
@@ -22,7 +22,7 @@
     "users-subgraph": {
       "type": "application",
       "root": "apps/users-subgraph",
-      "entryFile": "main",
+      "entryFile": "apps/users-subgraph/src/main",
       "sourceRoot": "apps/users-subgraph/src",
       "compilerOptions": {
         "tsConfigPath": "apps/users-subgraph/tsconfig.app.json"
@@ -31,7 +31,7 @@
     "orders-subgraph": {
       "type": "application",
       "root": "apps/orders-subgraph",
-      "entryFile": "main",
+      "entryFile": "apps/orders-subgraph/src/main",
       "sourceRoot": "apps/orders-subgraph/src",
       "compilerOptions": {
         "tsConfigPath": "apps/orders-subgraph/tsconfig.app.json"
@@ -40,7 +40,7 @@
     "gateway": {
       "type": "application",
       "root": "apps/gateway",
-      "entryFile": "main",
+      "entryFile": "apps/gateway/src/main",
       "sourceRoot": "apps/gateway/src",
       "compilerOptions": {
         "tsConfigPath": "apps/gateway/tsconfig.app.json"
