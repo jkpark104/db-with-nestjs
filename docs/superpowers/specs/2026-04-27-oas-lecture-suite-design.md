@@ -66,7 +66,7 @@ OpenAPI Specification은 "사후 문서"가 아니다. API의 설계를 BE/FE/QA
 | 패키지 | 버전 | 역할 | 챕터 |
 |--------|------|------|------|
 | `@nestjs/core` | ^11.x | NestJS 런타임 | 전 챕터 |
-| `@nestjs/swagger` | ^8.x | Code-First OAS 생성 + Swagger UI | Ch02~ |
+| `@nestjs/swagger` | ^11.x | Code-First OAS 생성 + Swagger UI (NestJS 11 호환은 v11+) | Ch02~ |
 | `@faker-js/faker` | ^10.x | 결정론적 시드 | 전 챕터 |
 | `class-validator` / `class-transformer` | 기존 | DTO 검증 | 전 챕터 |
 
@@ -77,10 +77,10 @@ OpenAPI Specification은 "사후 문서"가 아니다. API의 설계를 BE/FE/QA
 | 패키지 | 버전 | 역할 | 챕터 |
 |--------|------|------|------|
 | `react` + `react-dom` | ^18.x | UI 프레임워크 | Ch02~ |
-| `vite` + `@vitejs/plugin-react` | ^6.x | 빌드 도구 | Ch02~ |
-| `react-router-dom` | ^6.x | 챕터 라우팅 | Ch02~ |
+| `vite` + `@vitejs/plugin-react` | ^7.x (또는 최신 LTS) | 빌드 도구 | Ch02~ |
+| `react-router-dom` | ^7.x (v6 호환 모드 가능) | 챕터 라우팅 | Ch02~ |
 | `@tanstack/react-query` | ^5.x | 비동기 데이터 페칭 | Ch02~ |
-| `openapi-fetch` | ^0.x | codegen 기반 typesafe fetch wrapper | Ch04~ |
+| `openapi-fetch` | ^0.17 이상 | codegen 기반 typesafe fetch wrapper | Ch04~ |
 
 ### 공통 계약/도구 체인
 
@@ -470,7 +470,11 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 - FE `ch05-parallel-blocking/ProductList.tsx`: `VITE_API_BASE_URL` env 변수로 baseUrl 전환
   - 개발 시: `http://localhost:4010` (Prism)
   - 통합 시: `http://localhost:3000` (실 BE)
-- Prism은 OAS `examples`/`schema` 기반으로 동적 응답 생성. **Prism은 사용자 정의 헤더를 자동 주입하지 않으므로** `x-contract-status: spec-derived; served-by=prism-mock`은 FE에서 합성:
+- Prism의 응답 생성 정책 (Prism 공식 문서 기준):
+  - **기본(static) 모드**: OAS `examples` 우선 사용 → 없으면 schema의 `default`/`format`/`type` 으로 정적 값 생성
+  - **동적 모드 (`prism mock -d`)**: JSON Schema Faker로 매 요청마다 다른 값 생성. 학습 시연에서는 옵션으로 소개
+  - 본 챕터는 정적 모드를 기본으로 하되, `contracts/openapi.yaml` 의 `examples` 필드로 시연용 데이터 고정
+- **Prism은 사용자 정의 헤더를 자동 주입하지 않으므로** `x-contract-status: spec-derived; served-by=prism-mock`은 FE에서 합성:
   - `apps/web/src/lib/api-client.ts` 의 fetch 미들웨어가 `baseUrl` 호스트가 `localhost:4010`이면 응답 헤더 부재 시 `served-by=prism-mock`을 추가해 `contract-debug` 패널에 전달
 - BE 종료 상태(포트 3000 closed)에서도 FE 전체 시나리오 동작 확인
 
@@ -792,3 +796,4 @@ pnpm test:contract
 5. **`runtime-validated` 헤더의 신선도**: Ch06에서 `.contract-status.json`을 부팅 시 1회 읽음. 5분 초과 시 `=stale` 표시로 재실행 유도. 진정한 실시간 검증은 학습 범위 외.
 6. **`openapi-response-validator` vs Schemathesis**: 전자 선택. Schemathesis(Python)는 학습 범위 초과.
 7. **OpenAPI 3.1 vs 3.0**: 3.1 채택 (JSON Schema 2020-12 슈퍼셋). 일부 도구(특히 구버전 SwaggerUI/codegen)는 3.0만 지원하므로 시연 환경 도구 버전을 README에 명시.
+8. **버전 정책**: 본 spec의 의존성 버전(`^X.x`)은 *작성 시점(2026-04-27) 기준 호환되는 메이저 라인*. 실제 `pnpm install` 시 lock 파일이 진실의 원천. NestJS 11 ↔ `@nestjs/swagger` v11+ 같은 메이저 호환성 제약이 우선한다.
