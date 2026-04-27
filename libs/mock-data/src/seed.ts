@@ -25,7 +25,7 @@ export function createSeed(size: 'basic' | 'medium' = 'basic'): Store {
     id: i + 1,
     email: faker.internet.email().toLowerCase(),
     name: faker.person.fullName(),
-    createdAt: faker.date.past(),
+    createdAt: faker.date.past().toISOString(),
   }));
 
   const categories: Category[] = ['전자기기', '의류', '식품', '도서', '스포츠'].map((name, i) => ({
@@ -36,10 +36,10 @@ export function createSeed(size: 'basic' | 'medium' = 'basic'): Store {
   const products: Product[] = Array.from({ length: counts.products }, (_, i) => ({
     id: i + 1,
     name: faker.commerce.productName(),
-    price: Number(faker.commerce.price({ min: 1000, max: 500000, dec: 0 })),
+    priceInWon: Number(faker.commerce.price({ min: 1000, max: 500000, dec: 0 })),
     stock: faker.number.int({ min: 0, max: 100 }),
     description: faker.commerce.productDescription(),
-    createdAt: faker.date.past(),
+    createdAt: faker.date.past().toISOString(),
   }));
 
   const productCategories: ProductCategory[] = products.flatMap((p) => {
@@ -55,8 +55,8 @@ export function createSeed(size: 'basic' | 'medium' = 'basic'): Store {
     id: i + 1,
     userId: faker.helpers.arrayElement(users).id,
     status: faker.helpers.arrayElement(STATUSES),
-    totalAmount: 0,
-    createdAt: faker.date.past(),
+    totalAmountInWon: 0,
+    createdAt: faker.date.past().toISOString(),
   }));
 
   const orderItems: OrderItem[] = orders.flatMap((o) => {
@@ -69,14 +69,14 @@ export function createSeed(size: 'basic' | 'medium' = 'basic'): Store {
         orderId: o.id,
         productId: product.id,
         quantity,
-        unitPrice: product.price,
+        unitPriceInWon: product.priceInWon,
       };
     });
   });
 
   for (const order of orders) {
     const items = orderItems.filter((it) => it.orderId === order.id);
-    order.totalAmount = items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+    order.totalAmountInWon = items.reduce((sum, it) => sum + it.unitPriceInWon * it.quantity, 0);
   }
 
   const reviews: Review[] = Array.from({ length: counts.reviewsTarget }, (_, i) => ({
@@ -85,7 +85,7 @@ export function createSeed(size: 'basic' | 'medium' = 'basic'): Store {
     productId: faker.helpers.arrayElement(products).id,
     rating: faker.number.int({ min: 1, max: 5 }),
     content: faker.lorem.sentence(),
-    createdAt: faker.date.past(),
+    createdAt: faker.date.past().toISOString(),
   }));
 
   return { users, products, categories, productCategories, orders, orderItems, reviews };
