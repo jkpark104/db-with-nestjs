@@ -26,3 +26,9 @@ yarn-error.log*
 coverage/
 
 /generated/prisma
+
+contracts/generated/
+contracts/openapi.from-code.yaml
+.contract-status.json
+.compat-status.json
+apps/web/dist/
