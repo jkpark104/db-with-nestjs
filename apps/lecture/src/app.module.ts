@@ -2,9 +2,9 @@ import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { CallCounterInterceptor } from './common/call-counter.interceptor';
 import { ContractStatusInterceptor } from './common/contract-status.interceptor';
+import { Ch01DocDriftModule } from './ch01-doc-drift/ch01.module';
 
 // 학습 중인 챕터 모듈 하나만 활성화한다.
-// import { Ch01DocDriftModule } from './ch01-doc-drift/ch01.module';
 // import { Ch02CodeFirstSwaggerModule } from './ch02-code-first-swagger/ch02.module';
 // import { Ch03DerivedSpecPainModule } from './ch03-derived-spec-pain/ch03.module';
 // import { Ch04DesignFirstModule } from './ch04-design-first/ch04.module';
@@ -15,7 +15,7 @@ import { ContractStatusInterceptor } from './common/contract-status.interceptor'
 
 @Module({
   imports: [
-    // 챕터 진행 시 한 줄만 주석 해제
+    Ch01DocDriftModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: CallCounterInterceptor },
