@@ -10,7 +10,7 @@
 
 OpenAPI Specification은 "사후 문서"가 아니다. API의 설계를 BE/FE/QA가 동시에 참조하는 **실행 가능한 계약(Executable Contract)**이다. 그러나 이 가치는 한쪽만 보면 체감되지 않는다. FE와 BE가 함께 존재할 때, **BE 없이 FE가 돌아가고, BE 변경이 FE 타입 오류로 즉시 드러나고, 계약 위반이 CI에서 자동 검출**되는 순간에만 느껴진다.
 
-이 프로젝트는 그 순간들을 6 챕터의 점진적 시나리오로 압축한다.
+이 프로젝트는 그 순간들을 8 챕터의 점진적 시나리오로 압축한다.
 
 **핵심 서사**: 친숙한 Code-First(NestJS `@ApiProperty` 데코레이터)로 시작해 한계를 직접 체감한 후, Design-First(YAML이 SoT)로 전환 → Mock 병렬 개발 → Contract Testing CI 자동화까지 이르는 여정.
 
@@ -30,7 +30,7 @@ OpenAPI Specification은 "사후 문서"가 아니다. API의 설계를 BE/FE/QA
 | 시간 필드명 | `createdAt` (ISO 8601 문자열) | YAML schema에서 `format: date-time` |
 | ID 필드 | `number` (정수, 양수) | UUID 미사용 — 학습 단순화 |
 | 통화 단위 | KRW 원, 정수 | 소수점/통화 변환 미고려 |
-| 응답 헤더 | `x-contract-status` 1종 | 챕터별 값만 변동 (아래 [측정 장치](#측정-장치-x-contract-status-응답-헤더) 참조) |
+| 응답 헤더 | `x-contract-status` (Ch07부터 `client=` suffix, Ch08부터 `compat=` suffix 추가) | 챕터별 값만 변동 — [측정 장치](#측정-장치-x-contract-status-응답-헤더) 참조 |
 | OAS 버전 | OpenAPI 3.1 | JSON Schema 2020-12 슈퍼셋 — `examples` 활용 |
 
 이 표는 모든 챕터의 "정상 응답"에 대한 단일 진실의 원천이다. 학습 코드가 이를 벗어날 때는 반드시 챕터 본문에 *의도적 위반*임을 명시한다.
@@ -81,6 +81,7 @@ OpenAPI Specification은 "사후 문서"가 아니다. API의 설계를 BE/FE/QA
 | `react-router-dom` | ^7.x (v6 호환 모드 가능) | 챕터 라우팅 | Ch02~ |
 | `@tanstack/react-query` | ^5.x | 비동기 데이터 페칭 | Ch02~ |
 | `openapi-fetch` | ^0.17 이상 | codegen 기반 typesafe fetch wrapper | Ch04~ |
+| `openapi-react-query` | ^0.5 이상 | TanStack Labs — paths 기반 useQuery/useMutation 자동 생성 | Ch07~ |
 
 ### 공통 계약/도구 체인
 
@@ -90,6 +91,7 @@ OpenAPI Specification은 "사후 문서"가 아니다. API의 설계를 BE/FE/QA
 | `@stoplight/prism-cli` (devDep) | ^5.x | OAS 기반 Mock 서버 | Ch05~ |
 | `openapi-response-validator` (devDep) | ^12.x | 응답·사양 비교 | Ch06~ |
 | `js-yaml` (devDep) | ^4.x | Contract test에서 YAML 로드 | Ch06~ |
+| `oasdiff` (CLI, Tufin) | 1.x | OAS 두 버전 비교 — backward-incompatible 변경 차단 | Ch08~ |
 
 **삭제 없음** — 기존 GraphQL 의존성은 GraphQL 챕터 코드 보존을 위해 유지.
 
@@ -597,6 +599,174 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 
 ---
 
+### Ch07: Generated React Query Hooks (`ch07-generated-hooks/`)
+
+**시나리오**: Ch04에서 `openapi-fetch` + `paths`로 typed fetch를 얻었지만, FE는 여전히 endpoint마다 `useQuery({ queryKey, queryFn })`을 손으로 작성해야 한다. 50개 endpoint = 50개 보일러플레이트 + queryKey 일관성 관리. 새 BE endpoint가 추가될 때마다 FE도 손으로 hook 작성. mutation까지 가면 invalidation queryKey도 손으로 맞춰야 한다.
+
+**학습 목표**: "타입 codegen에서 멈추지 않고, 비동기 패턴(query/mutation/invalidation)까지 SoT에서 자동 생성될 수 있다. modern monorepo의 FE DX는 SoT 한 줄 변경이 typed hooks까지 즉시 전파되는 것이다."
+
+**구현 포인트**:
+- `openapi-react-query` (TanStack Labs) 도입 — Ch04 `openapi-fetch`의 자매 프로젝트(같은 라인의 자연스러운 진화)
+- `apps/web/src/lib/api-client.ts`에 추가:
+  ```typescript
+  import createClient from 'openapi-fetch';
+  import { createClient as createApi } from 'openapi-react-query';
+  import type { paths } from '@contracts/generated';
+
+  const fetchClient = createClient<paths>({ baseUrl: import.meta.env.VITE_API_BASE_URL });
+  export const $api = createApi(fetchClient);
+  ```
+- 사용 패턴 비교 (Ch04 ↔ Ch07):
+  ```typescript
+  // Ch04 — openapi-fetch + 손수 useQuery
+  const { data } = useQuery({
+    queryKey: ['products', id],
+    queryFn: () => apiClient.GET('/products/{id}', { params: { path: { id } } }).then(r => r.data),
+  });
+  // Ch07 — openapi-react-query (한 줄)
+  const { data } = $api.useQuery('get', '/products/{id}', { params: { path: { id } } });
+  ```
+- mutation + invalidation:
+  ```typescript
+  const create = $api.useMutation('post', '/orders');
+  const queryClient = useQueryClient();
+  const { queryKey } = $api.queryOptions('get', '/orders');
+  create.mutate(
+    { body: { userId: 1, items: [{ productId: 1, quantity: 2 }] } },
+    { onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKey.slice(0, 1) }) },
+  );
+  ```
+- OAS yaml 확장: `POST /orders` + `CreateOrderInput` 스키마 추가 (`totalAmountInWon`은 BE가 unitPriceInWon × quantity 합으로 계산)
+- BE: Ch04 controllers를 재사용 + `OrdersController.create()` 신규 1개. 모듈 ContractStatus 토큰 `'spec-derived; client=react-query'`
+- FE 화면 2개:
+  - `apps/web/src/ch07-generated-hooks/ProductList.tsx` — `$api.useQuery` 시연
+  - `apps/web/src/ch07-generated-hooks/CreateOrderForm.tsx` — `$api.useMutation` + invalidation 시연
+
+**OAS yaml 확장 (Ch04 yaml에 추가)**:
+```yaml
+paths:
+  /orders:
+    post:
+      tags: [orders]
+      summary: 주문 생성
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+components:
+  schemas:
+    CreateOrderInput:
+      type: object
+      required: [userId, items]
+      properties:
+        userId: { type: integer, minimum: 1 }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId: { type: integer, minimum: 1 }
+              quantity:  { type: integer, minimum: 1, maximum: 100 }
+```
+
+**측정**: `x-contract-status: spec-derived; client=react-query`
+
+**시연**:
+```bash
+pnpm gen:types        # POST /orders + CreateOrderInput 반영된 be-types.ts
+pnpm start:dev        # BE Ch07 활성
+pnpm start:web        # FE
+# 브라우저: 상품 선택 → '주문 생성' 버튼 → 목록 자동 갱신(invalidation)
+curl http://localhost:3000/products/1 -i | grep x-contract-status
+# x-contract-status: spec-derived; client=react-query
+```
+
+**Done-Definition (Ch07)**:
+- `$api.useQuery`로 Product list/detail 정상 렌더 — Ch04 hook 코드와 비교 시 wrapper 라인 ≥50% 감소 (README의 비교 표로 측정)
+- `$api.useMutation`으로 주문 생성 + cache invalidation 동작 (목록이 자동 갱신됨)
+- `contracts/openapi.yaml`에 `POST /orders` + `CreateOrderInput` 정의 추가
+- `pnpm gen:types` 후 `contracts/generated/be-types.ts`에 `createOrder` operation + `CreateOrderInput` 타입 포함
+- BE 응답 헤더 `x-contract-status: spec-derived; client=react-query`
+- Ch06 contract test에 `POST /orders` 정상 응답(201)이 `Order` 스키마와 일치하는지 검증 케이스 1건 추가 (Ch08 진입 전)
+
+**주석 강조점**: `// ✅ Codegen이 타입을 넘어 hook까지 책임진다. SoT의 영향 범위가 비동기 패턴까지 확장된다.`
+
+---
+
+### Ch08: Breaking Change Gate (`ch08-spec-compat/`)
+
+**시나리오**: Ch06 contract test는 BE 응답을 *현재* OAS yaml과 비교한다. 그러나 OAS yaml 자체가 backward-incompatible하게 바뀌면(예: `priceInWon` → `priceUSD` rename, required 필드 제거) BE도 새 yaml에 맞춰 응답하므로 contract test는 통과한다. 그 사이 *기존 클라이언트*(이전 codegen 결과를 빌드한 다른 FE 앱·모바일·외부 통합)는 prod에서 표류한다.
+
+**학습 목표**: "Contract test의 다음 단계는 *spec 자체의 호환성 게이트*다. PR 단계에서 backward-incompatible 변경을 자동 차단해 *spec semver*를 강제할 수 있다."
+
+**구현 포인트**:
+- `oasdiff` (Tufin, Go binary) — npx 또는 GitHub Action(`oasdiff/oasdiff-action`) 양방향 사용 가능
+- `contracts/openapi.baseline.yaml` 신규 — Ch07 시점의 안정 yaml 스냅샷 (`cp`로 1회 생성, git 커밋)
+- `pnpm test:compat`:
+  ```bash
+  npx --yes oasdiff breaking contracts/openapi.baseline.yaml contracts/openapi.yaml --fail-on ERR
+  ```
+- `scripts/run-oasdiff.mjs`: oasdiff 실행 + 결과를 `.compat-status.json`에 기록 (`{ status: 'stable' | 'breaking', ranAt: ISO }`)
+- `apps/lecture/src/common/contract-status.interceptor.ts` 확장:
+  - 부팅 시 `.compat-status.json` 읽어 헤더 suffix `compat=stable|breaking|unknown` 추가
+  - Ch06과 동일한 5분 stale window
+- BE 모듈: `apps/lecture/src/ch08-spec-compat/ch08.module.ts` — Ch07 controllers 재사용. ContractStatus 토큰은 `'spec-derived; runtime-validated=ok'`로 두고, compat suffix는 interceptor가 자동 합성
+- CI: `.github/workflows/contract.yml`에 step 추가
+  ```yaml
+  - run: pnpm test:compat
+  ```
+
+**시연 흐름 (학습자가 실제로 손으로 따라하는 단계)**:
+```bash
+# 0) 안정 상태 baseline 생성 (Ch07 마무리 시점에 1회)
+cp contracts/openapi.yaml contracts/openapi.baseline.yaml
+git add contracts/openapi.baseline.yaml
+git commit -m "chore: snapshot OAS baseline at Ch07"
+
+# 1) 의도적 breaking 변경 시연
+#    contracts/openapi.yaml의 components.schemas.Product에서 priceInWon → priceUSD rename
+pnpm test:compat
+# Output: ERR — required property removed: priceInWon (path: #/components/schemas/Product)
+# Exit code 1
+
+# 2) BE 재시작 후 헤더 확인
+pnpm start:dev
+curl http://localhost:3000/products/1 -i | grep x-contract-status
+# x-contract-status: spec-derived; runtime-validated=ok; compat=breaking
+
+# 3) 변경 되돌리기 + test:compat 재실행
+pnpm test:compat
+# Output: stable. Exit 0.
+# 헤더: compat=stable
+```
+
+**Done-Definition (Ch08)**:
+- `contracts/openapi.baseline.yaml` 존재하고 git 커밋되어 있음
+- `pnpm test:compat`: stable 상태에서 exit 0, breaking 변경 후 exit 1 + ERR 메시지
+- `.compat-status.json`이 `scripts/run-oasdiff.mjs`로 갱신됨 (.gitignore 처리)
+- BE 응답 헤더 suffix에 `compat=stable|breaking|unknown` 1종 항상 포함
+- CI 워크플로 `.github/workflows/contract.yml`에 `pnpm test:compat` step 포함되어 PR에서 breaking 변경 시 차단
+- spec yaml의 `info.version`은 변경 없음을 가정 — 본 챕터는 patch/minor/major 정책 자체를 다루지 않고 *기계적 호환성 게이트*에 집중 (학습 단순화)
+
+**주석 강조점**: `// ❌ contracts/openapi.baseline.yaml과 호환되지 않는 변경. PR이 차단된다.`
+
+---
+
 ## 챕터 간 비교 가이드
 
 | 챕터 | `x-contract-status` | OAS 정의 위치 | FE 타입 출처 | FE/BE 병렬? |
@@ -607,6 +777,8 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 | Ch04 | `spec-derived` | YAML (SoT) | codegen | 불가 (BE 필요) |
 | Ch05 | `spec-derived; served-by=prism-mock` | YAML (SoT) | codegen | **가능** (Prism) |
 | Ch06 | `spec-derived; runtime-validated=ok` | YAML (SoT) | codegen | 가능 + CI 검증 |
+| Ch07 | `spec-derived; client=react-query` | YAML (SoT) | codegen + hooks | 가능 |
+| Ch08 | `spec-derived; runtime-validated=ok; compat=stable` | YAML (SoT) | codegen + hooks | 가능 + spec semver 게이트 |
 
 ---
 
@@ -620,6 +792,8 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
 | 04 | `spec-derived` | codegen 타입으로 typesafe fetch | `pnpm gen:types` 후 BE/FE 동시 컴파일 | `pnpm gen:types && pnpm build` |
 | 05 | `spec-derived; served-by=prism-mock` (FE 합성) | BE 종료 상태에서도 Product 목록·상세 정상 | Prism이 examples 우선·schema 폴백으로 응답 생성 | `pnpm mock:start` |
 | 06 | 위반 시 `runtime-validated=violation`, 수정 후 `=ok` | 동일 FE | `test:contract` exit code 1→0 | `pnpm test:contract` |
+| 07 | `spec-derived; client=react-query` | `$api.useQuery` + `useMutation` + invalidation 동작 | OAS yaml에 `POST /orders` 추가, hook 라인 ≥50% 감소 | `pnpm gen:types && pnpm start:web` |
+| 08 | `spec-derived; runtime-validated=ok; compat=stable\|breaking` | (Ch07과 동일 화면) | `oasdiff` baseline 비교 — breaking 시 exit 1 | `pnpm test:compat` |
 
 ---
 
@@ -648,7 +822,8 @@ curl http://localhost:3000/products/1 -i | grep x-contract-status
     "prebuild": "pnpm gen:types",
     "pretest": "pnpm gen:types",
     "mock:start": "prism mock contracts/openapi.yaml --port 4010",
-    "test:contract": "jest --config jest.contract.config.ts"
+    "test:contract": "jest --config jest.contract.config.ts",
+    "test:compat": "node scripts/run-oasdiff.mjs"
   }
 }
 ```
@@ -821,6 +996,8 @@ components:
 
 이 샘플은 Ch04에서 학습자가 그대로 두고 시작하는 baseline. Ch06 contract test는 정상 응답(200)뿐 아니라 404 응답이 `ErrorResponse` 스키마와 일치하는지도 검증한다.
 
+> Ch07에서 학습자가 `POST /orders` + `CreateOrderInput`을 직접 추가한다. Ch08은 이 시점의 yaml을 `contracts/openapi.baseline.yaml`로 스냅샷하고, 이후 변경의 호환성을 비교한다.
+
 ---
 
 ## CI 워크플로 (최소)
@@ -841,6 +1018,7 @@ jobs:
       - run: pnpm gen:types          # YAML → 타입 재생성
       - run: pnpm build              # BE/FE 컴파일 (prebuild가 gen:types 재실행 OK)
       - run: pnpm test:contract      # 위반 시 PR 차단
+      - run: pnpm test:compat        # Ch08~ breaking 변경 시 PR 차단
 ```
 
 학습 자료 시연 시에는 GitHub Actions 미설정 환경도 고려해 README에 동일 명령(`pnpm test:contract`)을 강조한다.
@@ -888,3 +1066,5 @@ pnpm test:contract
 8. **버전 정책**: 본 spec의 의존성 버전(`^X.x`)은 *작성 시점(2026-04-27) 기준 호환되는 메이저 라인*. 실제 `pnpm install` 시 lock 파일이 진실의 원천. NestJS 11 ↔ `@nestjs/swagger` v11+ 같은 메이저 호환성 제약이 우선한다.
 9. **타입 codegen ≠ 런타임 검증**: `openapi-typescript`는 컴파일 타임 타입만 생성. NestJS `ValidationPipe`는 클래스+데코레이터를 요구하므로 Ch04+ 런타임 검증은 AJV 또는 Prism request validation으로 분담 (Ch04 본문 표 참조). 런타임 클래스 코드젠을 원하면 `@hey-api/openapi-ts` 등 별도 도구가 필요 — 본 spec 범위 외.
 10. **`prebuild`/`pretest` 안전성**: `gen:types` 훅이 Ch01-03에서 yaml 부재로 깨지지 않도록 `scripts/gen-types.mjs`에서 파일 존재 시만 실행. 학습자가 Ch01만 켜고 빌드해도 동작.
+11. **Generated hooks의 query key 안정성**: `openapi-react-query`는 path 기반 자동 query key를 생성한다. 수동 invalidation 시 `$api.queryOptions('get', '/orders').queryKey`를 사용하고, 직접 문자열 배열을 만들어 invalidate하지 않는다. queryKey 구조가 라이브러리 내부 컨벤션이며 메이저 업데이트에서 바뀔 수 있다.
+12. **`oasdiff`의 false positive 가능성**: 대부분의 backward-incompatible 변경은 ERR로 정확히 잡히지만, optional 필드 추가 같은 호환 변경이 드물게 ERR로 분류되는 경우가 있다. `--severity-levels` 옵션 또는 `oasdiff/ignore` 파일로 조정 가능. 학습 시연에서는 명백한 breaking(required 제거, 필드 rename, enum 값 제거)만 사용한다.
