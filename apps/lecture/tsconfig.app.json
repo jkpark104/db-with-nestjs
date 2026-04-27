@@ -5,5 +5,15 @@
     "types": ["node"]
   },
   "include": ["src/**/*", "../../libs/**/*"],
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "**/*spec.ts",
+    "src/ch01-rest-pain",
+    "src/ch02-graphql-basics",
+    "src/ch03-data-graph",
+    "src/ch04-n-plus-one",
+    "src/ch05-client-operations"
+  ]
 }

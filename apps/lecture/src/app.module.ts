@@ -1,28 +1,25 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { CallCounterInterceptor } from './common/call-counter.interceptor';
+import { ContractStatusInterceptor } from './common/contract-status.interceptor';
 
 // 학습 중인 챕터 모듈 하나만 활성화한다.
-// 다른 챕터로 이동할 때는 import 배열에서 교체.
-// import { Ch01RestModule } from './ch01-rest-pain/ch01.module';
-// import { Ch02GraphQLModule } from './ch02-graphql-basics/ch02.module';
-// import { Ch03DataGraphModule } from './ch03-data-graph/ch03.module';
-// import { Ch04DataLoaderModule } from './ch04-n-plus-one/ch04.module';
-import { Ch05SubscriptionModule } from './ch05-client-operations/ch05.module';
+// import { Ch01DocDriftModule } from './ch01-doc-drift/ch01.module';
+// import { Ch02CodeFirstSwaggerModule } from './ch02-code-first-swagger/ch02.module';
+// import { Ch03DerivedSpecPainModule } from './ch03-derived-spec-pain/ch03.module';
+// import { Ch04DesignFirstModule } from './ch04-design-first/ch04.module';
+// import { Ch05ParallelBlockingModule } from './ch05-parallel-blocking/ch05.module';
+// import { Ch06RuntimeDriftModule } from './ch06-runtime-drift/ch06.module';
+// import { Ch07GeneratedHooksModule } from './ch07-generated-hooks/ch07.module';
+// import { Ch08SpecCompatModule } from './ch08-spec-compat/ch08.module';
 
 @Module({
   imports: [
-    // Ch01RestModule,
-    // Ch02GraphQLModule,
-    // Ch03DataGraphModule,
-    // Ch04DataLoaderModule,
-    Ch05SubscriptionModule,
+    // 챕터 진행 시 한 줄만 주석 해제
   ],
   providers: [
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: CallCounterInterceptor,
-    },
+    { provide: APP_INTERCEPTOR, useClass: CallCounterInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: ContractStatusInterceptor },
   ],
 })
 export class AppModule {}
