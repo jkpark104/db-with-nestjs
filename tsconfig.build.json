@@ -1,4 +1,18 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "**/*spec.ts",
+    "apps/gateway",
+    "apps/users-subgraph",
+    "apps/orders-subgraph",
+    "apps/lecture/src/ch01-rest-pain",
+    "apps/lecture/src/ch02-graphql-basics",
+    "apps/lecture/src/ch03-data-graph",
+    "apps/lecture/src/ch04-n-plus-one",
+    "apps/lecture/src/ch05-client-operations",
+    "apps/web"
+  ]
 }
