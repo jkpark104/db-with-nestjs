@@ -90,7 +90,9 @@
     "coverageDirectory": "./coverage",
     "testEnvironment": "node",
     "moduleNameMapper": {
-      "^@app/mock-data(|/.*)$": "<rootDir>/libs/mock-data/src/$1"
+      "^@app/mock-data(|/.*)$": "<rootDir>/libs/mock-data/src/$1",
+      "^@contracts/generated$": "<rootDir>/contracts/generated/be-types.ts",
+      "^@contracts/(.*)$": "<rootDir>/contracts/$1"
     }
   }
 }

@@ -22,7 +22,9 @@
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@app/mock-data": ["libs/mock-data/src"],
-      "@app/mock-data/*": ["libs/mock-data/src/*"]
+      "@app/mock-data/*": ["libs/mock-data/src/*"],
+      "@contracts/*": ["contracts/*"],
+      "@contracts/generated": ["contracts/generated/be-types.ts"]
     }
   }
 }
