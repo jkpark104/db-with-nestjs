@@ -1,7 +1,8 @@
 import {
-  CallHandler, ExecutionContext, Inject, Injectable,
-  NestInterceptor, Optional,
+  CallHandler, ExecutionContext, Injectable,
+  NestInterceptor,
 } from '@nestjs/common';
+import { ModulesContainer } from '@nestjs/core';
 import { Observable, tap } from 'rxjs';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 
@@ -25,24 +26,49 @@ function readJsonStatus(path: string): string {
 
 @Injectable()
 export class ContractStatusInterceptor implements NestInterceptor {
-  constructor(
-    @Optional() @Inject(CONTRACT_STATUS) private readonly base: string | null,
-    @Optional() @Inject(CONTRACT_RUNTIME_VALIDATION) private readonly runtimeOn: boolean | null,
-    @Optional() @Inject(CONTRACT_COMPAT_TRACKING) private readonly compatOn: boolean | null,
-  ) {}
+  constructor(private readonly modulesContainer: ModulesContainer) {}
 
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const controllerClass = ctx.getClass();
+    const { base, runtimeOn, compatOn } = this.resolveTokens(controllerClass);
+
     const res = ctx.switchToHttp().getResponse<{
       setHeader?: (n: string, v: string) => void;
     } | null>();
+
     return next.handle().pipe(
       tap(() => {
-        if (!res?.setHeader || !this.base) return;
-        const parts = [this.base];
-        if (this.runtimeOn) parts.push(`runtime-validated=${readJsonStatus('.contract-status.json')}`);
-        if (this.compatOn)  parts.push(`compat=${readJsonStatus('.compat-status.json')}`);
+        if (!res?.setHeader || !base) return;
+        const parts = [base];
+        if (runtimeOn) parts.push(`runtime-validated=${readJsonStatus('.contract-status.json')}`);
+        if (compatOn)  parts.push(`compat=${readJsonStatus('.compat-status.json')}`);
         res.setHeader('x-contract-status', parts.join('; '));
       }),
     );
+  }
+
+  private resolveTokens(controller: unknown): {
+    base: string | null;
+    runtimeOn: boolean;
+    compatOn: boolean;
+  } {
+    for (const [, mod] of this.modulesContainer) {
+      const hasController = [...mod.controllers.values()].some(
+        (c) => c.metatype === controller,
+      );
+      if (!hasController) continue;
+
+      const get = <T>(token: string): T | null => {
+        const p = mod.providers.get(token);
+        return (p?.instance as T) ?? null;
+      };
+
+      return {
+        base: get<string>(CONTRACT_STATUS),
+        runtimeOn: get<boolean>(CONTRACT_RUNTIME_VALIDATION) === true,
+        compatOn: get<boolean>(CONTRACT_COMPAT_TRACKING) === true,
+      };
+    }
+    return { base: null, runtimeOn: false, compatOn: false };
   }
 }
