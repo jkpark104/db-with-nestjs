@@ -32,3 +32,6 @@ contracts/openapi.from-code.yaml
 .contract-status.json
 .compat-status.json
 apps/web/dist/
+
+# git worktrees
+.worktrees/
