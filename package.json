@@ -18,10 +18,10 @@
     "start:gateway": "nest start gateway --watch",
     "start:web": "vite --config apps/web/vite.config.ts",
     "lint": "eslint \"{apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
-    "test:watch": "jest --watch",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:contract": "jest --config jest.contract.config.ts",
+    "test:contract": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.contract.config.ts",
     "test:compat": "node scripts/run-oasdiff.mjs",
     "swagger:export": "ts-node -r tsconfig-paths/register scripts/export-swagger.ts",
     "gen:types": "node scripts/gen-types.mjs",
@@ -107,7 +107,7 @@
     ],
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.tsx?$": "ts-jest"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
