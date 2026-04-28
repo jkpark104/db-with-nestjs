@@ -4,6 +4,8 @@ import { Ch02ProductList } from './ch02-code-first-swagger/ProductList';
 import { Ch03ProductList } from './ch03-derived-spec-pain/ProductList';
 import { Ch04ProductList } from './ch04-design-first/ProductList';
 import { Ch05ProductList } from './ch05-parallel-blocking/ProductList';
+import { Ch07ProductList } from './ch07-generated-hooks/ProductList';
+import { Ch07CreateOrderForm } from './ch07-generated-hooks/CreateOrderForm';
 
 export default function App() {
   return (
@@ -22,6 +24,7 @@ function ChapterContent() {
     case 'ch03': return <Ch03ProductList />;
     case 'ch04': return <Ch04ProductList />;
     case 'ch05': return <Ch05ProductList />;
+    case 'ch07': return <><Ch07ProductList /><Ch07CreateOrderForm /></>;
     default: return <p>chapter {ACTIVE_CHAPTER} not yet implemented</p>;
   }
 }

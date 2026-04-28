@@ -45,6 +45,27 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /orders:
+    post:
+      tags: [orders]
+      summary: 주문 생성
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /users/{id}:
     get:
       tags: [users]
@@ -96,6 +117,20 @@ components:
         productId:      { type: integer, minimum: 1 }
         quantity:       { type: integer, minimum: 1 }
         unitPriceInWon: { type: integer, minimum: 0 }
+    CreateOrderInput:
+      type: object
+      required: [userId, items]
+      properties:
+        userId: { type: integer, minimum: 1 }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId: { type: integer, minimum: 1 }
+              quantity:  { type: integer, minimum: 1, maximum: 100 }
     ErrorResponse:
       type: object
       required: [statusCode, message]

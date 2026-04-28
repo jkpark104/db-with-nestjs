@@ -1,9 +1,12 @@
 import createClient from 'openapi-fetch';
+import createApi from 'openapi-react-query';
 import type { paths } from '@contracts/generated';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
 
-export const apiClient = createClient<paths>({ baseUrl: BASE_URL });
+const fetchClient = createClient<paths>({ baseUrl: BASE_URL });
+export const apiClient = fetchClient;
+export const $api = createApi(fetchClient);
 
 export function isPrismMockBaseUrl(): boolean {
   try {
