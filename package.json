@@ -21,7 +21,7 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:contract": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.contract.config.ts",
+    "test:contract": "node scripts/run-contract-test.mjs",
     "test:compat": "node scripts/run-oasdiff.mjs",
     "swagger:export": "ts-node -r tsconfig-paths/register scripts/export-swagger.ts",
     "gen:types": "node scripts/gen-types.mjs",
