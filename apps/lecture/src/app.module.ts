@@ -8,12 +8,12 @@ import { ContractStatusInterceptor } from './common/contract-status.interceptor'
 // import { Ch04DesignFirstModule } from './ch04-design-first/ch04.module';
 // import { Ch05ParallelBlockingModule } from './ch05-parallel-blocking/ch05.module';
 // import { Ch06RuntimeDriftModule } from './ch06-runtime-drift/ch06.module';
-import { Ch07GeneratedHooksModule } from './ch07-generated-hooks/ch07.module';
-// import { Ch08SpecCompatModule } from './ch08-spec-compat/ch08.module';
+// import { Ch07GeneratedHooksModule } from './ch07-generated-hooks/ch07.module';
+import { Ch08SpecCompatModule } from './ch08-spec-compat/ch08.module';
 
 @Module({
   imports: [
-    Ch07GeneratedHooksModule,
+    Ch08SpecCompatModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: CallCounterInterceptor },

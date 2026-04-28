@@ -11,8 +11,8 @@ if (!existsSync(baseline) || !existsSync(current)) {
 }
 
 const r = spawnSync(
-  'npx',
-  ['--yes', 'oasdiff', 'breaking', baseline, current, '--fail-on', 'ERR'],
+  'oasdiff',
+  ['breaking', baseline, current, '--fail-on', 'ERR'],
   { stdio: 'inherit' },
 );
 
