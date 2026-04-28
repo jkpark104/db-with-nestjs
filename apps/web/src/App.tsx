@@ -1,5 +1,6 @@
 import { ACTIVE_CHAPTER } from './active-chapter';
 import { ContractDebugProvider } from './lib/contract-debug';
+import { Ch02ProductList } from './ch02-code-first-swagger/ProductList';
 
 export default function App() {
   return (
@@ -13,6 +14,8 @@ export default function App() {
 }
 
 function ChapterContent() {
-  // Ch02 페이지는 Phase 2에서 추가. 본 Phase 0에선 placeholder.
-  return <p>chapter page not loaded yet</p>;
+  switch (ACTIVE_CHAPTER) {
+    case 'ch02': return <Ch02ProductList />;
+    default: return <p>chapter {ACTIVE_CHAPTER} not yet implemented</p>;
+  }
 }
