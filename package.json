@@ -23,7 +23,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:contract": "jest --config jest.contract.config.ts",
     "test:compat": "node scripts/run-oasdiff.mjs",
-    "swagger:export": "ts-node scripts/export-swagger.ts",
+    "swagger:export": "ts-node -r tsconfig-paths/register scripts/export-swagger.ts",
     "gen:types": "node scripts/gen-types.mjs",
     "mock:start": "prism mock contracts/openapi.yaml --port 4010",
     "prebuild": "pnpm gen:types",
