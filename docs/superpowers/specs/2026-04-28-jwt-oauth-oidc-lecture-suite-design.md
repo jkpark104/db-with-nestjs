@@ -282,177 +282,367 @@ x-auth-power: password_exposures=N, scope=A+B, ttl=Ns, grant=<type>, refresh=N, 
 
 ## 챕터 상세 설계
 
+> 각 챕터는 **통증 → 필요 → Best Practice** 서사로 진행된다.
+> **흐름** 섹션은 주체(노드)들이 주고받는 메시지를 시퀀스로 명세한다.
+> 측정 헤더(`x-auth-power`)는 흐름의 마지막 노드 응답에서 확인한다.
+
+---
+
 ### Ch01: 비번 공유 통합의 한계 (`apps/ch01-password-sharing/`)
 
-**시나리오**: 가격비교 사이트가 우리 쇼핑몰 사용자의 주문 이력을 읽어 가격 분석을 제공하려고 한다. 가장 단순한 방법: 사용자가 외부 사이트에 우리 쇼핑몰 비번을 입력하면, 외부 사이트가 우리 API에 매번 직접 로그인한다.
+**통증**: 가격비교 사이트가 우리 쇼핑몰 사용자의 주문 이력을 읽으려 한다. 우리 쇼핑몰은 OAuth를 제공하지 않는다.
 
-**학습 목표**: "비번 공유는 ① 권한 위임 불가, ② 권한 범위 통제 불가, ③ 비번 변경 시 모든 외부 앱 깨짐, ④ 외부 앱 신뢰에 의존"
+**무엇이 필요했는가**: 외부 앱이 사용자 데이터에 접근할 수 있는 어떤 방법이든 필요하다. 가장 단순한 방법은 사용자 비번을 외부 앱에 주는 것이다.
+
+**Best Practice (이 챕터에서 체험할 결론)**: 비번 공유는 (1) 권한 위임 불가 — 비번 하나로 모든 API 접근, (2) 범위 통제 불가 — 주문만 허용할 수 없음, (3) 취소 불가 — 비번 변경 외에 접근 차단 방법 없음, (4) 신뢰 의존 — 외부 앱이 비번을 어떻게 쓰는지 제어 불가. **이 통증이 OAuth의 존재 이유다.**
+
+**주체**:
+- `사용자 (User)`: 가격비교 사이트에 자신의 쇼핑몰 계정 비번을 입력하는 사람
+- `third-party-app` (port 3011): 가격비교 사이트. 사용자 비번을 받아 our-service에 직접 로그인
+- `our-service` (port 3001): 우리 쇼핑몰. username/password 인증 + 세션 쿠키 발급
+
+**흐름**:
+```mermaid
+sequenceDiagram
+    actor U as 사용자
+    participant T as third-party-app<br/>(port 3011)
+    participant O as our-service<br/>(port 3001)
+
+    U->>T: POST /integrate<br/>{ email, password }
+    Note over T: 💀 비번을 내부 변수에 보관<br/>(메모리에 평문 저장)
+    T->>O: POST /login<br/>{ email, password }
+    O->>O: bcrypt 검증 → 세션 생성
+    O-->>T: HTTP 200 + Set-Cookie: sessionId
+    T->>O: GET /api/orders<br/>Cookie: sessionId
+    Note over O: x-auth-power 삽입<br/>password_exposures=1, scope=ALL, ttl=∞
+    O-->>T: 200 + orders[]<br/>x-auth-power: password_exposures=1, scope=ALL, ttl=∞
+    T-->>U: { orders, auth_power: "password_exposures=1, scope=ALL, ttl=∞" }
+    Note over U,T: 💀 사용자 비번이 외부 앱에 노출됨<br/>💀 orders 외 모든 API도 접근 가능<br/>💀 비번 변경 시 이 통합 즉시 깨짐
+```
 
 **구현 포인트**:
-- `our-service`: `POST /login {email, password}` → 세션 쿠키 발급, `GET /api/orders` (쿠키 필요). **Ch01 전용 `x-auth-power` interceptor 포함** — `password_exposures=1, scope=ALL, ttl=∞, grant=password` 반환. (resource-server는 Ch02에 등장; Ch01 측정은 our-service에서 직접 주입)
-- `third-party-app`: `POST /integrate {email, password}` → **사용자 비번을 내부 변수에 보관** → our-service에 로그인 → our-service의 `x-auth-power` 헤더를 응답 body에 포함해 반환
+- `our-service`: `POST /login` → 세션 쿠키. `GET /api/orders` (쿠키 필요). **Ch01 전용 `x-auth-power` interceptor** — `resource-server`는 Ch02에 등장하므로 이 챕터 한정으로 `our-service`에 직접 주입.
+- `third-party-app`: `POST /integrate` — 비번 수신 → our-service 로그인 → our-service 응답의 `x-auth-power` 값을 응답 body에 포함.
 - **의도적 안티패턴 주석**:
   ```typescript
   // 💀 ANTI-PATTERN: 사용자 비번이 외부 앱 메모리에 평문 보관됨
-  // 💀 ANTI-PATTERN: 권한 범위 통제 불가 — 비번 하나로 모든 API 접근 가능
+  // 💀 ANTI-PATTERN: scope 제한 없음 — 비번 하나로 모든 API 접근 가능
   // 💀 ANTI-PATTERN: 비번 변경 시 이 통합은 즉시 깨짐
   ```
 
 **시연**:
 ```bash
 pnpm start:ch01
-curl -X POST localhost:3011/integrate \
+curl -s -X POST localhost:3011/integrate \
   -H "Content-Type: application/json" \
-  -d '{"email":"alice@shop.com","password":"alice123"}'
-# Response body에 auth_power 포함:
+  -d '{"email":"alice@shop.com","password":"alice123"}' | jq .
 # { "orders": [...], "auth_power": "password_exposures=1, scope=ALL, ttl=∞, grant=password" }
 ```
 
 ---
 
-### Ch02: Authorization Code Flow (`apps/ch02-client-server-side/` + `apps/auth-server/` 등장 + `apps/resource-server/` 등장)
+### Ch02: OAuth 2.0 Authorization Code Flow (`apps/auth-server/` + `apps/resource-server/` + `apps/ch02-client-server-side/` 첫 등장)
 
-**시나리오**: 가격비교 사이트가 server-side web app이다. client_secret을 안전하게 서버에 보관할 수 있다. Auth Server를 도입해 우리 쇼핑몰을 OAuth Provider로 만들고, 비번 공유 없이 주문 데이터를 위임한다.
+**통증 (Ch01에서 이어짐)**: 비번 공유는 권한 위임·범위 통제·취소가 불가능하다. 우리 쇼핑몰이 직접 외부 앱에 "주문 읽기"만 허용하고 나중에 취소할 수 있는 방법이 없다.
 
-**학습 목표**: "OAuth Authorization Code 5단계가 비번 노출 없이 위임을 가능하게 하는 메커니즘"
+**무엇이 필요했는가**: 사용자가 비번을 노출하지 않고도 외부 앱에 특정 권한만 위임할 수 있는 표준 프로토콜. 외부 앱은 client_secret을 서버에 안전하게 보관 가능한 server-side web app이다.
 
-**구현 포인트 (auth-server)**:
-- RS256 키페어 생성 + `/.well-known/jwks.json` (kid 포함)
-- `GET /authorize`: 동의 화면 → authorization code 생성 (10분 TTL)
-- `POST /token`: code + client_secret 검증 → access token (5분 TTL, RS256) + refresh token (7일 TTL, rotation)
-- Refresh Token: ioredis-mock에 hashed 저장 (rotation: 사용 즉시 폐기 + 재발급)
+**Best Practice**: OAuth 2.0 Authorization Code Flow. 사용자는 Auth Server에서 직접 동의(consent)하고 authorization code만 외부 앱에 전달한다. 외부 앱은 code + client_secret을 Auth Server에 제시해 access token을 받는다. Resource Server는 Auth Server의 public key(JWKS)로 token을 검증하므로 Auth Server를 매 요청마다 호출하지 않는다.
 
-**구현 포인트 (resource-server)**:
-- JWKS 조회 (auth-server에서 public key 가져오기, 5분 캐싱)
-- JWT 검증: signature, alg(RS256 whitelist), exp, nbf, iss, aud
-- `scope` 클레임 검사 (ScopeGuard)
-- `x-auth-power` interceptor 주입
+**주체**:
+- `사용자 (User)`: 브라우저에서 동의 화면을 보고 권한을 승인하는 사람
+- `브라우저 (Browser)`: 사용자의 User-Agent. 리다이렉트를 수행하는 매개체
+- `ch02-client-server-side` (port 3002): 가격비교 사이트(server-side web app). client_secret 보유
+- `auth-server` (port 4000): 우리 쇼핑몰 OAuth Provider. 토큰 발급·JWKS 제공
+- `resource-server` (port 5000): 우리 쇼핑몰 API. JWT 검증만 수행, Auth Server 실시간 호출 없음
 
-**구현 포인트 (client)**:
-- `state` UUID 생성 + 세션 저장 → auth-server로 리다이렉트
-- `GET /callback`: state 검증 + code → token 교환 + refresh 쿠키 저장
+**흐름**:
+```mermaid
+sequenceDiagram
+    actor U as 사용자
+    participant B as 브라우저
+    participant C as ch02-client<br/>(port 3002)
+    participant AS as auth-server<br/>(port 4000)
+    participant RS as resource-server<br/>(port 5000)
+
+    U->>B: "로그인" 클릭
+    B->>C: GET /login
+    C->>C: state = UUID() 생성<br/>세션에 저장 (CSRF 방어)
+    C-->>B: 302 Redirect →<br/>/authorize?client_id=price-compare<br/>&scope=orders:read&state=<uuid>&redirect_uri=...
+    B->>AS: GET /authorize?...
+    AS-->>B: 동의 화면 렌더링<br/>("price-compare가 orders:read 권한을 요청합니다")
+    U->>B: "허용" 클릭
+    B->>AS: POST /authorize (동의 확인)
+    AS->>AS: authorization_code 생성<br/>(10분 TTL, 1회용)
+    AS-->>B: 302 Redirect →<br/>/callback?code=<auth_code>&state=<uuid>
+    B->>C: GET /callback?code=...&state=...
+    C->>C: state 검증 (세션 값과 비교)<br/>불일치 시 400 abort
+    C->>AS: POST /token<br/>{ code, client_secret, redirect_uri,<br/>  grant_type=authorization_code }
+    AS->>AS: code 검증 + client_secret 검증<br/>access_token (RS256, 300s TTL) 발급<br/>refresh_token (7일, rotation) 발급<br/>code 즉시 폐기 (1회용)
+    AS-->>C: { access_token, refresh_token, expires_in: 300 }
+    C->>C: refresh_token → HttpOnly 쿠키 저장
+    C->>RS: GET /api/orders<br/>Authorization: Bearer <access_token>
+    RS->>AS: GET /.well-known/jwks.json<br/>(public key 조회, 5분 캐싱)
+    RS->>RS: signature(RS256 whitelist) / alg<br/>/ exp / nbf / iss / aud 검증<br/>scope=orders:read 확인
+    RS-->>C: 200 + orders[]<br/>x-auth-power: password_exposures=0,<br/>scope=orders:read, ttl=300, grant=code
+    C-->>B: 주문 목록 페이지
+```
+
+**Refresh Token Rotation 흐름** (access token 만료 후):
+```mermaid
+sequenceDiagram
+    participant C as ch02-client
+    participant AS as auth-server
+    participant RS as resource-server
+
+    C->>RS: GET /api/orders + 만료된 access_token
+    RS-->>C: 401 Unauthorized
+    C->>AS: POST /token<br/>{ grant_type=refresh_token,<br/>  refresh_token=<old_rt> }
+    AS->>AS: refresh_token hash 조회<br/>기존 token 즉시 폐기 (rotation)<br/>새 access_token + refresh_token 발급
+    AS-->>C: { access_token(new), refresh_token(new) }
+    C->>RS: GET /api/orders + 새 access_token
+    RS-->>C: 200 + orders[]
+```
+
+**구현 포인트**:
+- `auth-server`: RS256 keypair 생성(시작 시) + `/.well-known/jwks.json` (kid 포함). `/authorize` 동의 화면. `/token` code·client_secret 검증. refresh_token: hashed(sha256) + ioredis-mock 저장 + rotation.
+- `resource-server`: JWKS 5분 캐싱. JWT 검증 (alg whitelist = RS256만). ScopeGuard. `x-auth-power` interceptor.
+- `ch02-client`: state UUID 생성·검증. `/callback` code→token 교환. refresh_token HttpOnly 쿠키 보관.
 
 **시연**:
 ```bash
 pnpm start:ch02
-# 브라우저: localhost:3002/login
-# → auth-server 동의 화면 → 승인 → code 콜백 → token 교환
-AT=$(cat /tmp/access_token)  # 콜백에서 출력
+# 브라우저: localhost:3002/login → 동의 → 콜백
 curl -i localhost:5000/api/orders -H "Authorization: Bearer $AT"
 # x-auth-power: password_exposures=0, scope=orders:read, ttl=300, grant=code, refresh=0
 ```
 
 ---
 
-### Ch03: PKCE (`apps/ch03-client-spa/`)
+### Ch03: PKCE (`apps/ch03-client-spa/` + `apps/auth-server/` 진화)
 
-**시나리오**: 모바일 앱이나 SPA는 client_secret을 안전하게 보관할 수 없다. code를 가로챈 공격자가 token을 요청할 수 없도록 PKCE 확장을 추가한다.
+**통증 (Ch02에서 이어짐)**: Ch02의 client는 server-side였다. 하지만 SPA(브라우저 앱)나 모바일 앱은 client_secret을 소스코드·번들에 넣으면 누구나 추출 가능하다. client_secret 없이 Authorization Code Flow를 쓰면, 공격자가 code를 가로채 `/token`을 직접 호출할 수 있다.
 
-**학습 목표**: "client_secret 없이도 PKCE의 verifier/challenge 쌍이 code 탈취 공격을 무력화하는 원리"
+**무엇이 필요했는가**: client_secret을 두지 않으면서도 "이 token 요청이 정당한 code 수령자의 것"임을 증명하는 방법.
 
-**구현 포인트 (auth-server 진화)**:
-- `authorization_code` grant에서 `code_challenge` + `code_challenge_method=S256` 수신 → 코드와 함께 저장
-- `/token`에서 `code_verifier` 수신 → `SHA-256(verifier) === code_challenge` 검증 (client_secret 불필요)
+**Best Practice**: PKCE (Proof Key for Code Exchange). client가 code 요청 전 `code_verifier`(랜덤 문자열)를 생성하고, 그 SHA-256 해시인 `code_challenge`를 `/authorize`에 포함시킨다. 공격자가 code를 가로채더라도 `code_verifier`를 모르면 `/token`을 완성할 수 없다.
 
-**구현 포인트 (ch03-client-spa)**:
-- NestJS `@ServeStaticModule`로 `public/index.html` serving
-- `index.html` vanilla JS:
-  ```javascript
-  // 1. code_verifier: crypto.getRandomValues → base64url
-  // 2. code_challenge: SubtleCrypto.digest('SHA-256', verifier) → base64url
-  // 3. sessionStorage에 verifier 저장
-  // 4. /authorize?code_challenge=...&code_challenge_method=S256 리다이렉트
-  // 5. 콜백 시 verifier 꺼내서 /token에 전송 (client_secret 없음)
-  ```
+**주체**:
+- `사용자 (User)`: 브라우저에서 동의하는 사람
+- `ch03-client-spa` (port 3003, 브라우저 JS): SPA. client_secret 없음. verifier/challenge를 직접 생성
+- `auth-server` (port 4000): code_challenge 저장·검증 로직 추가됨
+- `resource-server` (port 5000): 변경 없음 — token 검증 로직 동일
+
+**흐름**:
+```mermaid
+sequenceDiagram
+    actor U as 사용자
+    participant SPA as ch03-client-spa<br/>(port 3003, 브라우저 JS)
+    participant AS as auth-server<br/>(port 4000)
+    participant RS as resource-server<br/>(port 5000)
+
+    U->>SPA: "로그인" 클릭
+    SPA->>SPA: code_verifier 생성<br/>(crypto.getRandomValues → base64url)
+    SPA->>SPA: code_challenge = BASE64URL(SHA-256(verifier))
+    SPA->>SPA: verifier → sessionStorage 저장
+    Note over SPA: client_secret 없음!
+    SPA-->>U: 302 Redirect →<br/>/authorize?code_challenge=<hash><br/>&code_challenge_method=S256<br/>&scope=orders:read&state=...
+    U->>AS: GET /authorize?...
+    AS->>AS: code_challenge + method를<br/>authorization_code와 함께 저장
+    AS-->>U: 동의 화면
+    U->>AS: 동의 승인
+    AS-->>SPA: 302 → /callback?code=...
+    Note over SPA: 공격자가 code를 가로채도<br/>verifier를 모르면 token 요청 불가!
+    SPA->>SPA: verifier ← sessionStorage에서 복원
+    SPA->>AS: POST /token<br/>{ code, code_verifier }<br/>(client_secret 없음!)
+    AS->>AS: SHA-256(code_verifier)<br/>=== 저장된 code_challenge<br/>검증 통과 → token 발급
+    AS-->>SPA: { access_token, refresh_token }
+    SPA->>RS: GET /api/orders<br/>Authorization: Bearer <access_token>
+    RS-->>SPA: 200 + orders[]<br/>x-auth-power: grant=code+pkce
+```
+
+**구현 포인트**:
+- `auth-server 진화`: `/authorize`에서 `code_challenge` + `code_challenge_method` 수신 → code 저장 시 함께 보관. `/token`에서 `code_verifier` 수신 → `node:crypto.createHash('sha256')` 으로 검증. client_secret 없어도 통과.
+- `ch03-client-spa`: NestJS `ServeStaticModule`로 `public/index.html` serving. index.html vanilla JS에서 Web Crypto API (`SubtleCrypto`) 사용. code_verifier를 `sessionStorage`에 보관 (localStorage 아님 — XSS 탭 격리).
 
 **시연**:
 ```bash
 pnpm start:ch03
-# 브라우저: localhost:3003
-# DevTools > Application > sessionStorage → code_verifier 확인
-# DevTools > Network → /token 요청에 code_verifier 있고 client_secret 없음 확인
-# x-auth-power: grant=code+pkce
+# 브라우저: localhost:3003 → 로그인 클릭
+# DevTools > Application > sessionStorage: code_verifier 값 확인
+# DevTools > Network > /token 요청: code_verifier 있음, client_secret 없음 확인
+# x-auth-power: grant=code+pkce, password_exposures=0
 ```
 
 ---
 
-### Ch04: Client Credentials — M2M (`apps/ch04-client-m2m/`)
+### Ch04: Client Credentials — M2M (`apps/ch04-client-m2m/` + `apps/auth-server/` 진화)
 
-**시나리오**: 백오피스 정산 배치가 매일 새벽 주문 통계를 집계해 분석 시스템에 보낸다. 사용자가 없으므로 Authorization Code 흐름이 부적합하다.
+**통증 (Ch02/Ch03에서 이어짐)**: Authorization Code Flow는 항상 "사용자가 브라우저에서 동의"를 요구한다. 하지만 백오피스 정산 배치처럼 사용자가 없는 서버-서버 통합에서는 이 흐름이 작동하지 않는다.
 
-**학습 목표**: "M2M 통합은 사용자 동의 흐름 없이 client_id/secret만으로 token을 받는 별도 grant"
+**무엇이 필요했는가**: 사용자 개입 없이 서비스 계정(client) 자체의 신원만으로 token을 발급받는 방법.
 
-**구현 포인트 (auth-server 진화)**:
-- `grant_type=client_credentials` 처리: client_id + client_secret 검증 → access token 발급
-- token payload: `sub=client:<clientId>` (userId 없음), `scope=stats:read`
-- refresh token 미발급 (M2M은 만료 시 재발급)
+**Best Practice**: Client Credentials Grant. client_id + client_secret만으로 Auth Server에서 직접 token을 발급받는다. token의 `sub`는 `client:<clientId>` — 사용자가 없으므로 userId 없음. Resource Server는 `sub=client:*` 형태를 확인해 사용자 컨텍스트 없는 요청임을 인식한다.
 
-**구현 포인트 (resource-server 진화)**:
-- `GET /api/stats` 엔드포인트 추가 (scope=stats:read)
-- `sub=client:*` 형태의 token 처리 (사용자 컨텍스트 없음)
+**주체**:
+- `ch04-client-m2m` (콘솔 프로세스): 정산 배치. HTTP 서버 없이 실행, 1회 완료 후 종료
+- `auth-server` (port 4000): `client_credentials` grant 처리 로직 추가됨
+- `resource-server` (port 5000): `GET /api/stats` 엔드포인트 추가됨 (scope=stats:read)
+- _(브라우저·사용자 없음)_
 
-**구현 포인트 (ch04-client-m2m)**:
-- NestJS `NestFactory.createApplicationContext()` (HTTP 서버 없이 실행)
-- 시작 시 `/token` 호출 → access token 받기 → `/api/stats` 호출 → 결과 콘솔 출력 → 종료
+**흐름**:
+```mermaid
+sequenceDiagram
+    participant M as ch04-client-m2m<br/>(콘솔 프로세스)
+    participant AS as auth-server<br/>(port 4000)
+    participant RS as resource-server<br/>(port 5000)
+
+    Note over M: 사용자 개입 없음<br/>서버가 직접 시작
+    M->>AS: POST /token<br/>{ grant_type=client_credentials,<br/>  client_id=billing-batch,<br/>  client_secret=<secret> }
+    AS->>AS: client_id·secret 검증<br/>sub=client:billing-batch<br/>scope=stats:read<br/>access_token(RS256, 300s) 발급<br/>refresh_token 미발급
+    AS-->>M: { access_token, token_type: Bearer }
+    M->>RS: GET /api/stats<br/>Authorization: Bearer <access_token>
+    RS->>RS: JWT 검증<br/>sub=client:billing-batch (사용자 없음 확인)<br/>scope=stats:read 확인
+    RS-->>M: 200 + { totalOrders: 42, revenue: ... }<br/>x-auth-power: grant=client_credentials,<br/>sub=client:billing-batch, scope=stats:read
+    M->>M: 결과 콘솔 출력 → 프로세스 종료
+```
+
+**구현 포인트**:
+- `auth-server 진화`: `/token`에서 `grant_type=client_credentials` 분기. `sub=client:<clientId>` payload. refresh_token 미발급 (M2M은 만료 시 재발급).
+- `resource-server 진화`: `GET /api/stats` (scope=stats:read). `sub` 클레임이 `client:*` 패턴이면 사용자 컨텍스트 없음으로 처리.
+- `ch04-client-m2m`: `NestFactory.createApplicationContext()`로 HTTP 서버 없이 실행. `HttpService`(axios)로 token 발급 → stats 호출 → 출력 → `process.exit(0)`.
 
 **시연**:
 ```bash
 pnpm start:ch04
-# 콘솔: [ch04:m2m] Fetching token...
-# 콘솔: [ch04:m2m] x-auth-power: grant=client_credentials, sub=client:billing-batch, scope=stats:read
-# 콘솔: [ch04:m2m] Stats: { totalOrders: 42, ... }
-# 프로세스 종료
+# [ch04:m2m] POST /token with client_credentials...
+# [ch04:m2m] access_token received (sub=client:billing-batch)
+# [ch04:m2m] x-auth-power: grant=client_credentials, sub=client:billing-batch, scope=stats:read
+# [ch04:m2m] Stats: { totalOrders: 42, revenue: 1234500 }
+# [ch04:m2m] Done. Exiting.
 ```
 
 ---
 
-### Ch05: OIDC ID Token (`apps/ch05-client-oidc/`)
+### Ch05: OIDC ID Token (`apps/ch05-client-oidc/` + `apps/auth-server/` 진화)
 
-**시나리오**: 가계부 앱이 'Login with our-shop'을 구현하려고 한다. access token을 받아도 "이 사용자가 누구인지" 알 수 없다. OAuth는 권한 증명, OIDC는 신원 증명.
+**통증 (Ch02에서 이어짐)**: 가계부 앱이 'Login with our-shop'을 구현하려 한다. Ch02 흐름으로 access_token을 받았다. 그런데 access_token은 "orders:read 권한이 있다"는 증명이지, "이 토큰이 누구의 것인가"를 말해주지 않는다. access_token payload에서 `sub` 클레임으로 userId를 읽을 수 있지만, 이는 비표준 의존이고 token 형식이 바뀌면 깨진다.
 
-**학습 목표**: "OAuth access token ≠ 사용자 신원. OIDC ID Token이 신원 정보를 표준화하는 방식"
+**무엇이 필요했는가**: 사용자 신원 정보를 표준화된 형식으로, 서명이 검증 가능하게 전달하는 방법.
 
-**구현 포인트 (auth-server 진화)**:
-- `scope=openid` 포함 시 ID Token 발급 (별도 JWT, 서명 = RS256)
-- ID Token claims: `iss`, `sub`, `aud`, `exp`, `iat`, `nonce`, `name`, `email`
-- nonce: `/authorize` 요청 시 client가 보낸 값을 그대로 ID Token에 포함
+**Best Practice**: OIDC(OpenID Connect). `scope=openid`를 포함해 `/authorize`를 요청하면, Auth Server는 access_token과 별개로 **ID Token**(JWT)을 발급한다. ID Token은 `sub`, `email`, `name`, `iss`, `aud`, `nonce` 등 신원 클레임을 담고, 같은 RS256 키로 서명된다. client는 JWKS로 서명을 검증한다.
 
-**구현 포인트 (ch05-client-oidc)**:
-- `/authorize`에 `scope=openid+orders:read`, `nonce` 추가
-- 콜백에서 `id_token` 수신 → JWKS로 서명 검증 → nonce 검증
-- 콘솔에 `sub`, `email`, `name` 출력
+**주체**:
+- `사용자 (User)`: 동의하는 사람
+- `브라우저 (Browser)`: 리다이렉트 매개체
+- `ch05-client-oidc` (port 3005): 가계부 앱. ID Token으로 사용자 신원 확인
+- `auth-server` (port 4000): `scope=openid` 시 ID Token 발급 로직 추가됨
+- `resource-server` (port 5000): 변경 없음. access_token payload에 `sub` 있으면 통과
+
+**흐름**:
+```mermaid
+sequenceDiagram
+    actor U as 사용자
+    participant B as 브라우저
+    participant C as ch05-client-oidc<br/>(port 3005)
+    participant AS as auth-server<br/>(port 4000)
+    participant RS as resource-server<br/>(port 5000)
+
+    U->>B: "Login with our-shop" 클릭
+    B->>C: GET /login
+    C->>C: nonce = UUID() 생성<br/>세션 저장 (replay 공격 방어)
+    C-->>B: 302 Redirect →<br/>/authorize?scope=openid+orders:read<br/>&nonce=<uuid>&state=...
+    B->>AS: GET /authorize?...
+    AS-->>B: 동의 화면 ("신원 정보 + 주문 읽기 요청")
+    U->>B: 동의
+    B->>AS: POST /authorize
+    AS->>AS: authorization_code 생성<br/>nonce 저장 (code와 함께)
+    AS-->>B: 302 → /callback?code=...
+    B->>C: GET /callback?code=...&state=...
+    C->>C: state 검증
+    C->>AS: POST /token { code, client_secret }
+    AS->>AS: ID Token 생성:<br/>{ iss, sub=1, aud=ch05-client,<br/>  exp, iat, nonce,<br/>  name="Alice", email="alice@shop.com" }<br/>RS256 서명
+    AS-->>C: { access_token, id_token, refresh_token }
+    C->>AS: GET /.well-known/jwks.json
+    C->>C: id_token 서명 검증 (RS256·JWKS)<br/>nonce 검증 (replay 방어)<br/>sub=1, email 추출
+    Note over C: "이 사용자가 누구인지" 확인 완료
+    C->>RS: GET /api/orders<br/>Authorization: Bearer <access_token>
+    RS-->>C: 200 + orders[]<br/>x-auth-power: scope=openid+orders:read,<br/>ttl=300, id_token=present
+    C-->>B: "Alice의 주문 목록" 렌더링
+```
+
+**구현 포인트**:
+- `auth-server 진화`: `/token`에서 `scope`에 `openid` 포함 시 ID Token 발급. ID Token claims: `iss`, `sub`, `aud`, `exp`, `iat`, `nonce`, `name`, `email`. 동일 RS256 키 사용 (access_token과 같은 JWKS로 검증 가능).
+- `ch05-client-oidc`: nonce 생성·세션 저장. 콜백에서 `id_token` jose `jwtVerify`로 검증. nonce 불일치 시 401.
 
 **시연**:
 ```bash
 pnpm start:ch05
-# 브라우저: localhost:3005/login
-# 콜백 후 콘솔: ID Token decoded: { sub: '1', email: 'alice@shop.com', name: 'Alice' }
+# 브라우저: localhost:3005/login → 동의 → 콜백
+# 서버 콘솔: ID Token verified: { sub: '1', email: 'alice@shop.com', name: 'Alice' }
 # x-auth-power: scope=openid+orders:read, ttl=300, id_token=present
 ```
 
 ---
 
-### Ch06: UserInfo + SSO 통합 (`apps/ch06-client-social-login/`)
+### Ch06: UserInfo + SSO 통합 (`apps/ch06-client-social-login/` + `apps/auth-server/` 진화)
 
-**시나리오**: ID Token에는 핵심 식별 정보만 담긴다. 추가 프로필(주소, 전화)은 UserInfo 엔드포인트로. 외부 서비스가 우리 사용자 신원을 받아 자체 사용자를 자동 생성/연결하는 SSO 완성.
+**통증 (Ch05에서 이어짐)**: ID Token에는 핵심 식별 정보(`sub`, `email`, `name`)만 담긴다. JWT 크기를 작게 유지하기 위해 주소·전화·추가 프로필은 ID Token에 넣지 않는다. 또한 client는 ID Token으로 신원을 확인했지만, 자체 서비스에서 이 사용자를 어떻게 관리할지(자동 회원가입·계정 연결)는 아직 해결되지 않았다.
 
-**학습 목표**: "OIDC 풀 흐름 — ID Token 검증 → UserInfo 호출 → 자체 사용자 생성/연결 → SSO 세션 발급"
+**무엇이 필요했는가**: (1) ID Token 이후 추가 프로필 데이터를 가져오는 표준 방법. (2) 외부 서비스가 우리 사용자로 자체 계정을 자동 생성·연결하는 SSO 완성 패턴.
 
-**구현 포인트 (auth-server 진화)**:
-- `GET /userinfo` (Bearer token 필요, `openid` scope 필수)
-- 응답: `{ sub, name, email, phone, address }` (scope에 따라 필드 제한)
+**Best Practice**: OIDC UserInfo 엔드포인트. `GET /userinfo` + access_token으로 추가 프로필 수신. client는 ID Token 검증 → `sub` 추출 → UserInfo 호출 → 자체 DB 조회 → 없으면 생성(계정 연결) → 자체 세션 발급. **이것이 'Login with Google/GitHub'의 내부 동작이다.**
 
-**구현 포인트 (ch06-client-social-login)**:
-- ID Token 검증 → `sub` 추출
-- `/userinfo` 호출 (access token으로)
-- `sub`로 자체 DB 조회 → 없으면 자동 생성, 있으면 연결
-- 자체 세션 쿠키 발급: `express-session` + 인메모리 스토어 (학습용). 우리 쇼핑몰 OAuth 계정과는 별개의 client 내부 세션.
+**주체**:
+- `사용자 (User)`: 'Login with our-shop' 버튼을 클릭하는 사람
+- `브라우저 (Browser)`: 리다이렉트 매개체
+- `ch06-client-social-login` (port 3006): SSO를 구현하는 외부 서비스. 자체 사용자 DB 보유
+- `auth-server` (port 4000): `/userinfo` 엔드포인트 추가됨
+- `resource-server` (port 5000): 이 챕터에서는 직접 사용 안 함 (SSO 흐름에 집중)
+
+**흐름**:
+```mermaid
+sequenceDiagram
+    actor U as 사용자
+    participant B as 브라우저
+    participant C as ch06-client-social-login<br/>(port 3006)
+    participant AS as auth-server<br/>(port 4000)
+
+    U->>B: "Login with our-shop" 클릭
+    B->>C: GET /login
+    C->>C: state, nonce 생성 + 세션 저장
+    C-->>B: 302 Redirect →<br/>/authorize?scope=openid+profile<br/>&nonce=...&state=...
+    B->>AS: GET /authorize?...
+    AS-->>B: 동의 화면 ("신원 + 프로필 정보 요청")
+    U->>B: 동의
+    B->>AS: POST /authorize
+    AS-->>B: 302 → /callback?code=...
+    B->>C: GET /callback?code=...&state=...
+    C->>C: state 검증
+    C->>AS: POST /token { code, client_secret }
+    AS-->>C: { access_token, id_token, refresh_token }
+    C->>C: id_token 서명 검증 + nonce 검증<br/>sub=1 추출
+    C->>AS: GET /userinfo<br/>Authorization: Bearer <access_token>
+    AS->>AS: access_token 검증<br/>scope에 openid 있는지 확인
+    AS-->>C: { sub: "1", name: "Alice",<br/>  email: "alice@shop.com",<br/>  phone: "010-1234-5678",<br/>  address: "서울시 ..." }
+    Note over C: ID Token = 신원 확인용 (서명 검증)<br/>UserInfo = 추가 프로필 조회용
+    C->>C: sub=1로 자체 DB 조회<br/>없으면: 새 사용자 생성<br/>있으면: 기존 계정 연결
+    C->>C: express-session 발급<br/>(자체 sessionId 쿠키)
+    C-->>B: Set-Cookie: sessionId + "Welcome, Alice!"<br/>x-auth-power: scope=openid+profile,<br/>id_token=present, userinfo_called=1
+    Note over U,B: 우리 쇼핑몰 비번 한 번도 입력 안 함<br/>외부 서비스가 SSO로 로그인 완료
+```
+
+**구현 포인트**:
+- `auth-server 진화`: `GET /userinfo` — Bearer token 검증 + `openid` scope 확인 + scope에 따라 필드 제한 반환 (`profile` scope → name/phone/address, `email` scope → email).
+- `ch06-client-social-login`: ID Token 검증 → UserInfo 호출 → `sub` 기반 upsert → `express-session` 인메모리 발급.
+- `x-auth-power` 헤더: Ch06에서는 `/userinfo` 응답 헤더에 `userinfo_called=1` 포함 (resource-server 없이 auth-server에서 직접 주입).
 
 **시연**:
 ```bash
 pnpm start:ch06
-# 브라우저: localhost:3006 → 'Login with our-shop' 버튼 클릭
-# 브라우저: 동의 후 콜백 → UserInfo 호출 → 자동 회원가입 → "Welcome, Alice!"
+# 브라우저: localhost:3006
+# "Login with our-shop" 클릭 → 동의 → 자동 회원가입 → "Welcome, Alice!"
+# Network: GET /userinfo 200 확인
 # x-auth-power: scope=openid+profile, id_token=present, userinfo_called=1
 ```
 
