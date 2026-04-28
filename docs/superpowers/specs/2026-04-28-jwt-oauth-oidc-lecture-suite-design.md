@@ -14,10 +14,10 @@
 
 학습을 마치면 다음을 직접 코드로 체험한다:
 1. 왜 OAuth가 비번 공유를 대체하는지
-2. 어떤 grant_type이 어느 client 컨텍스트에 적합한지
+2. Authorization Code Flow의 각 주체(User·Browser·Client·Auth Server·Resource Server)가 어떤 메시지를 주고받는지
 3. PKCE의 보안적 가치 (code 탈취 방어)
 4. OAuth(권한) ↔ OIDC(신원)의 분리
-5. 실무 OAuth Provider의 점진적 진화 경로
+5. 실무 OAuth Provider의 점진적 진화 경로 (Code → PKCE → OIDC → SSO)
 
 **이전 분기 참조**:
 - RDB: `feat/db-lecture-suite` / `docs/superpowers/specs/2026-04-20-db-lecture-suite-design.md`
@@ -31,9 +31,8 @@
 1. **비번 공유의 구조적 한계를 코드로 체감한다** — 서드파티 앱이 사용자 비번을 평문 보관하고 매번 재사용하는 순간, 권한 위임 불가·범위 통제 불가가 추상 개념이 아닌 실제 위험임을 깨닫는다.
 2. **OAuth 2.0 Authorization Code Flow의 5단계가 비번 노출 없이 위임을 가능하게 한다** — `state` 검증·code 교환·refresh rotation까지 직접 구현하면서 표준이 존재하는 이유를 이해한다.
 3. **client_secret을 보관할 수 없는 환경에서는 PKCE가 code 탈취를 방어한다** — code_verifier/code_challenge 쌍이 authorization code를 가로챈 공격자를 무력화하는 원리를 코드로 확인한다.
-4. **사용자 개입 없는 M2M 통합은 별도 grant가 필요하다** — Client Credentials를 구현하면서 "사용자 sub 없는 토큰"이 존재하는 이유와 적합한 사용처를 파악한다.
-5. **access token은 권한 증명이지 신원 증명이 아니다** — OIDC ID Token을 도입하는 순간 "누구를 위한 토큰인가"와 "이 사람이 누구인가"가 다른 질문임을 깨닫는다.
-6. **OIDC 풀 흐름 — ID Token + UserInfo로 외부 서비스가 우리 사용자 신원을 안전히 받아 SSO를 구축한다** — 'Login with our-shop' 시나리오로 소셜 로그인의 전 흐름을 직접 작성한다.
+4. **access token은 권한 증명이지 신원 증명이 아니다** — OIDC ID Token을 도입하는 순간 "누구를 위한 토큰인가"와 "이 사람이 누구인가"가 다른 질문임을 깨닫는다.
+5. **OIDC 풀 흐름 — ID Token + UserInfo로 외부 서비스가 우리 사용자 신원을 안전히 받아 SSO를 구축한다** — 'Login with our-shop' 시나리오로 소셜 로그인의 전 흐름을 직접 작성한다.
 
 ---
 
@@ -102,7 +101,7 @@ export interface RegisteredClient {
   clientId: string;
   clientSecret?: string;          // PKCE 전용 client는 undefined
   redirectUris: string[];
-  allowedGrantTypes: Array<'authorization_code' | 'client_credentials'>;
+  allowedGrantTypes: Array<'authorization_code'>;
   allowedScopes: string[];
   pkceRequired: boolean;
 }
@@ -122,7 +121,7 @@ export interface AuthorizationCode {
 export interface RefreshToken {
   jti: string;
   clientId: string;
-  userId?: number;        // Client Credentials면 undefined
+  userId?: number;        // PKCE 전용 등 특수 케이스에서 undefined 가능
   scope: string;
   hashedToken: string;    // sha256 해시 — DB엔 원본 저장 안 함
   expiresAt: number;
@@ -157,13 +156,12 @@ db-with-nestjs/  (feat/jwt-oauth-oidc-lecture-suite)
 │   │       ├── grants/
 │   │       │   ├── authorization-code.service.ts   # Ch02
 │   │       │   ├── pkce.service.ts                  # Ch03 추가
-│   │       │   ├── client-credentials.service.ts   # Ch04 추가
-│   │       │   └── openid.service.ts                # Ch05 추가 (ID Token)
+│   │       │   └── openid.service.ts                # Ch04 추가 (ID Token)
 │   │       ├── authorize/              # GET  /authorize (동의 화면)
 │   │       ├── token/                  # POST /token (code → access + refresh)
 │   │       ├── jwks/                   # GET  /.well-known/jwks.json
 │   │       ├── refresh-store/          # RefreshToken CRUD (ioredis-mock or Map)
-│   │       └── userinfo/               # GET  /userinfo (Ch06 추가)
+│   │       └── userinfo/               # GET  /userinfo (Ch05 추가)
 │   │
 │   ├── resource-server/                # Ch02 등장 — JWT 검증·scope 검사만 (포트 5000)
 │   │   └── src/
@@ -175,8 +173,7 @@ db-with-nestjs/  (feat/jwt-oauth-oidc-lecture-suite)
 │   │       │   └── x-auth-power.interceptor.ts      # 측정 헤더 주입
 │   │       ├── orders/                 # GET /api/orders (scope=orders:read)
 │   │       ├── products/               # GET /api/products
-│   │       ├── stats/                  # GET /api/stats  (scope=stats:read, Ch04+)
-│   │       └── user-profile/           # GET /api/user/profile (OIDC, Ch05+)
+│   │       └── user-profile/           # GET /api/user/profile (OIDC, Ch04+)
 │   │
 │   ├── ch02-client-server-side/        # 전통 server-side web app (포트 3002)
 │   │   └── src/
@@ -191,18 +188,14 @@ db-with-nestjs/  (feat/jwt-oauth-oidc-lecture-suite)
 │   │       └── public/
 │   │           └── index.html          # vanilla JS — verifier/challenge 생성 + PKCE 흐름
 │   │
-│   ├── ch04-client-m2m/                # Client Credentials (콘솔 1회 실행)
-│   │   └── src/
-│   │       └── main.ts                 # 실행 시 token 발급 → /api/stats 호출 → 종료
-│   │
-│   ├── ch05-client-oidc/               # OIDC ID Token (포트 3005)
+│   ├── ch04-client-oidc/               # OIDC ID Token (포트 3005)
 │   │   └── src/
 │   │       ├── main.ts
 │   │       ├── login.controller.ts     # scope=openid+orders:read 포함
 │   │       ├── callback.controller.ts  # ID Token 수신 + 서명 검증 + nonce 확인
 │   │       └── oidc.service.ts         # ID Token decode + claims 출력
 │   │
-│   └── ch06-client-social-login/       # UserInfo + SSO (포트 3006)
+│   └── ch05-client-social-login/       # UserInfo + SSO (포트 3006)
 │       └── src/
 │           ├── main.ts
 │           ├── login.controller.ts
@@ -218,7 +211,7 @@ db-with-nestjs/  (feat/jwt-oauth-oidc-lecture-suite)
 │           ├── store.ts                # 인메모리 배열 (users, products, orders, clients)
 │           └── mock-repository.ts     # findOne / findMany
 │
-├── nest-cli.json                       # 모노레포 — 8개+ 앱 등록
+├── nest-cli.json                       # 모노레포 — 7개+ 앱 등록
 ├── package.json
 └── tsconfig.json
 ```
@@ -233,9 +226,8 @@ db-with-nestjs/  (feat/jwt-oauth-oidc-lecture-suite)
 | ch01 third-party-app | 3011 | Ch01 |
 | ch02-client-server-side | 3002 | Ch02 |
 | ch03-client-spa | 3003 | Ch03 |
-| ch04-client-m2m | 없음 (콘솔) | Ch04 |
-| ch05-client-oidc | 3005 | Ch05 |
-| ch06-client-social-login | 3006 | Ch06 |
+| ch04-client-oidc | 3005 | Ch04 |
+| ch05-client-social-login | 3006 | Ch05 |
 
 ---
 
@@ -257,9 +249,8 @@ x-auth-power: password_exposures=N, scope=A+B, ttl=Ns, grant=<type>, refresh=N, 
 | 01 | `password_exposures=1, scope=ALL, ttl=∞, grant=password` | 비번 1회 노출, 전체 권한, 만료 없음 |
 | 02 | `password_exposures=0, scope=orders:read, ttl=300, grant=code, refresh=0` | 비번 0, 최소 권한, 300s TTL |
 | 03 | `password_exposures=0, scope=orders:read, ttl=300, grant=code+pkce` | PKCE 추가 |
-| 04 | `password_exposures=0, scope=stats:read, ttl=300, grant=client_credentials, sub=client:billing-batch` | 사용자 sub 없음 |
-| 05 | `password_exposures=0, scope=openid+orders:read, ttl=300, id_token=present` | ID Token 첫 등장 |
-| 06 | `password_exposures=0, scope=openid+profile, id_token=present, userinfo_called=1` | UserInfo 호출 완료 |
+| 04 | `password_exposures=0, scope=openid+orders:read, ttl=300, id_token=present` | ID Token 첫 등장 |
+| 05 | `password_exposures=0, scope=openid+profile, id_token=present, userinfo_called=1` | UserInfo 호출 완료 |
 
 ### 결정론적 시드
 
@@ -273,9 +264,8 @@ x-auth-power: password_exposures=N, scope=A+B, ttl=Ns, grant=<type>, refresh=N, 
 "start:ch01": "concurrently \"nest start ch01-our-service --watch\" \"nest start ch01-third-party-app --watch\"",
 "start:ch02": "concurrently \"nest start auth-server --watch\" \"nest start resource-server --watch\" \"nest start ch02-client-server-side --watch\"",
 "start:ch03": "concurrently \"nest start auth-server --watch\" \"nest start resource-server --watch\" \"nest start ch03-client-spa --watch\"",
-"start:ch04": "concurrently \"nest start auth-server --watch\" \"nest start resource-server --watch\" \"ts-node apps/ch04-client-m2m/src/main.ts\"",
-"start:ch05": "concurrently \"nest start auth-server --watch\" \"nest start resource-server --watch\" \"nest start ch05-client-oidc --watch\"",
-"start:ch06": "concurrently \"nest start auth-server --watch\" \"nest start resource-server --watch\" \"nest start ch06-client-social-login --watch\""
+"start:ch04": "concurrently \"nest start auth-server --watch\" \"nest start resource-server --watch\" \"nest start ch04-client-oidc --watch\"",
+"start:ch05": "concurrently \"nest start auth-server --watch\" \"nest start resource-server --watch\" \"nest start ch05-client-social-login --watch\""
 ```
 
 ---
@@ -476,55 +466,7 @@ pnpm start:ch03
 
 ---
 
-### Ch04: Client Credentials — M2M (`apps/ch04-client-m2m/` + `apps/auth-server/` 진화)
-
-**통증 (Ch02/Ch03에서 이어짐)**: Authorization Code Flow는 항상 "사용자가 브라우저에서 동의"를 요구한다. 하지만 백오피스 정산 배치처럼 사용자가 없는 서버-서버 통합에서는 이 흐름이 작동하지 않는다.
-
-**무엇이 필요했는가**: 사용자 개입 없이 서비스 계정(client) 자체의 신원만으로 token을 발급받는 방법.
-
-**Best Practice**: Client Credentials Grant. client_id + client_secret만으로 Auth Server에서 직접 token을 발급받는다. token의 `sub`는 `client:<clientId>` — 사용자가 없으므로 userId 없음. Resource Server는 `sub=client:*` 형태를 확인해 사용자 컨텍스트 없는 요청임을 인식한다.
-
-**주체**:
-- `ch04-client-m2m` (콘솔 프로세스): 정산 배치. HTTP 서버 없이 실행, 1회 완료 후 종료
-- `auth-server` (port 4000): `client_credentials` grant 처리 로직 추가됨
-- `resource-server` (port 5000): `GET /api/stats` 엔드포인트 추가됨 (scope=stats:read)
-- _(브라우저·사용자 없음)_
-
-**흐름**:
-```mermaid
-sequenceDiagram
-    participant M as ch04-client-m2m<br/>(콘솔 프로세스)
-    participant AS as auth-server<br/>(port 4000)
-    participant RS as resource-server<br/>(port 5000)
-
-    Note over M: 사용자 개입 없음<br/>서버가 직접 시작
-    M->>AS: POST /token<br/>{ grant_type=client_credentials,<br/>  client_id=billing-batch,<br/>  client_secret=<secret> }
-    AS->>AS: client_id·secret 검증<br/>sub=client:billing-batch<br/>scope=stats:read<br/>access_token(RS256, 300s) 발급<br/>refresh_token 미발급
-    AS-->>M: { access_token, token_type: Bearer }
-    M->>RS: GET /api/stats<br/>Authorization: Bearer <access_token>
-    RS->>RS: JWT 검증<br/>sub=client:billing-batch (사용자 없음 확인)<br/>scope=stats:read 확인
-    RS-->>M: 200 + { totalOrders: 42, revenue: ... }<br/>x-auth-power: grant=client_credentials,<br/>sub=client:billing-batch, scope=stats:read
-    M->>M: 결과 콘솔 출력 → 프로세스 종료
-```
-
-**구현 포인트**:
-- `auth-server 진화`: `/token`에서 `grant_type=client_credentials` 분기. `sub=client:<clientId>` payload. refresh_token 미발급 (M2M은 만료 시 재발급).
-- `resource-server 진화`: `GET /api/stats` (scope=stats:read). `sub` 클레임이 `client:*` 패턴이면 사용자 컨텍스트 없음으로 처리.
-- `ch04-client-m2m`: `NestFactory.createApplicationContext()`로 HTTP 서버 없이 실행. `HttpService`(axios)로 token 발급 → stats 호출 → 출력 → `process.exit(0)`.
-
-**시연**:
-```bash
-pnpm start:ch04
-# [ch04:m2m] POST /token with client_credentials...
-# [ch04:m2m] access_token received (sub=client:billing-batch)
-# [ch04:m2m] x-auth-power: grant=client_credentials, sub=client:billing-batch, scope=stats:read
-# [ch04:m2m] Stats: { totalOrders: 42, revenue: 1234500 }
-# [ch04:m2m] Done. Exiting.
-```
-
----
-
-### Ch05: OIDC ID Token (`apps/ch05-client-oidc/` + `apps/auth-server/` 진화)
+### Ch04: OIDC ID Token (`apps/ch04-client-oidc/` + `apps/auth-server/` 진화)
 
 **통증 (Ch02에서 이어짐)**: 가계부 앱이 'Login with our-shop'을 구현하려 한다. Ch02 흐름으로 access_token을 받았다. 그런데 access_token은 "orders:read 권한이 있다"는 증명이지, "이 토큰이 누구의 것인가"를 말해주지 않는다. access_token payload에서 `sub` 클레임으로 userId를 읽을 수 있지만, 이는 비표준 의존이고 token 형식이 바뀌면 깨진다.
 
@@ -535,7 +477,7 @@ pnpm start:ch04
 **주체**:
 - `사용자 (User)`: 동의하는 사람
 - `브라우저 (Browser)`: 리다이렉트 매개체
-- `ch05-client-oidc` (port 3005): 가계부 앱. ID Token으로 사용자 신원 확인
+- `ch04-client-oidc` (port 3005): 가계부 앱. ID Token으로 사용자 신원 확인
 - `auth-server` (port 4000): `scope=openid` 시 ID Token 발급 로직 추가됨
 - `resource-server` (port 5000): 변경 없음. access_token payload에 `sub` 있으면 통과
 
@@ -544,7 +486,7 @@ pnpm start:ch04
 sequenceDiagram
     actor U as 사용자
     participant B as 브라우저
-    participant C as ch05-client-oidc<br/>(port 3005)
+    participant C as ch04-client-oidc<br/>(port 3005)
     participant AS as auth-server<br/>(port 4000)
     participant RS as resource-server<br/>(port 5000)
 
@@ -577,7 +519,7 @@ sequenceDiagram
 
 **시연**:
 ```bash
-pnpm start:ch05
+pnpm start:ch04
 # 브라우저: localhost:3005/login → 동의 → 콜백
 # 서버 콘솔: ID Token verified: { sub: '1', email: 'alice@shop.com', name: 'Alice' }
 # x-auth-power: scope=openid+orders:read, ttl=300, id_token=present
@@ -585,7 +527,7 @@ pnpm start:ch05
 
 ---
 
-### Ch06: UserInfo + SSO 통합 (`apps/ch06-client-social-login/` + `apps/auth-server/` 진화)
+### Ch05: UserInfo + SSO 통합 (`apps/ch05-client-social-login/` + `apps/auth-server/` 진화)
 
 **통증 (Ch05에서 이어짐)**: ID Token에는 핵심 식별 정보(`sub`, `email`, `name`)만 담긴다. JWT 크기를 작게 유지하기 위해 주소·전화·추가 프로필은 ID Token에 넣지 않는다. 또한 client는 ID Token으로 신원을 확인했지만, 자체 서비스에서 이 사용자를 어떻게 관리할지(자동 회원가입·계정 연결)는 아직 해결되지 않았다.
 
@@ -596,7 +538,7 @@ pnpm start:ch05
 **주체**:
 - `사용자 (User)`: 'Login with our-shop' 버튼을 클릭하는 사람
 - `브라우저 (Browser)`: 리다이렉트 매개체
-- `ch06-client-social-login` (port 3006): SSO를 구현하는 외부 서비스. 자체 사용자 DB 보유
+- `ch05-client-social-login` (port 3006): SSO를 구현하는 외부 서비스. 자체 사용자 DB 보유
 - `auth-server` (port 4000): `/userinfo` 엔드포인트 추가됨
 - `resource-server` (port 5000): 이 챕터에서는 직접 사용 안 함 (SSO 흐름에 집중)
 
@@ -605,7 +547,7 @@ pnpm start:ch05
 sequenceDiagram
     actor U as 사용자
     participant B as 브라우저
-    participant C as ch06-client-social-login<br/>(port 3006)
+    participant C as ch05-client-social-login<br/>(port 3006)
     participant AS as auth-server<br/>(port 4000)
 
     U->>B: "Login with our-shop" 클릭
@@ -639,7 +581,7 @@ sequenceDiagram
 
 **시연**:
 ```bash
-pnpm start:ch06
+pnpm start:ch05
 # 브라우저: localhost:3006
 # "Login with our-shop" 클릭 → 동의 → 자동 회원가입 → "Welcome, Alice!"
 # Network: GET /userinfo 200 확인
@@ -655,9 +597,8 @@ pnpm start:ch06
 | 01 | **1** ⚠️ | ALL ⚠️ | ∞ ⚠️ | password ⚠️ | absent | (anti-pattern 체험) |
 | 02 | 0 ✅ | orders:read | 300s | code | absent | 비번 공유 → OAuth 위임 |
 | 03 | 0 | orders:read | 300s | code+pkce | absent | secret 노출 → PKCE |
-| 04 | 0 | stats:read | 300s | client_credentials | absent | 사용자 흐름 부적합 → M2M |
-| 05 | 0 | openid+orders:read | 300s | code | **present** ✅ | 권한 ≠ 신원 → ID Token |
-| 06 | 0 | openid+profile | 300s | code | present + userinfo | ID Token 부족 → UserInfo + SSO |
+| 04 | 0 | openid+orders:read | 300s | code | **present** ✅ | 권한 ≠ 신원 → ID Token |
+| 05 | 0 | openid+profile | 300s | code | present + userinfo | ID Token 부족 → UserInfo + SSO |
 
 ---
 
@@ -671,9 +612,8 @@ pnpm install
 pnpm start:ch01   # anti-pattern 체험
 pnpm start:ch02   # Authorization Code Flow
 pnpm start:ch03   # PKCE
-pnpm start:ch04   # Client Credentials (M2M, 콘솔 실행 후 종료)
-pnpm start:ch05   # OIDC ID Token
-pnpm start:ch06   # UserInfo + SSO
+pnpm start:ch04   # OIDC ID Token
+pnpm start:ch05   # UserInfo + SSO
 
 # 3. 각 챕터 시연 — curl 또는 브라우저
 curl -i localhost:5000/api/orders -H "Authorization: Bearer $AT"
@@ -695,9 +635,9 @@ curl -i localhost:5000/api/orders -H "Authorization: Bearer $AT"
 | JWKS kid 기반 public key 선택 | resource-server jwt-verifier | Ch02~ |
 | Refresh Token hashed 저장 | auth-server refresh-store | Ch02~ |
 | Refresh Token rotation (폐기 + 재발급) | auth-server token controller | Ch02~ |
-| state 파라미터 CSRF 방어 | ch02~ch06 client callback | Ch02~ |
+| state 파라미터 CSRF 방어 | ch02~ch05 client callback | Ch02~ |
 | redirect_uri 문자 단위 검증 | auth-server authorize | Ch02~ |
-| nonce replay 방어 | auth-server token (openid) | Ch05~ |
+| nonce replay 방어 | auth-server token (openid) | Ch04~ |
 | PKCE code_challenge 검증 (S256) | auth-server grants/pkce | Ch03~ |
 
 ---
@@ -718,9 +658,8 @@ curl -i localhost:5000/api/orders -H "Authorization: Bearer $AT"
 - [ ] `pnpm start:ch01` → `curl localhost:3011/integrate ...` → `x-auth-power: password_exposures=1, scope=ALL` 확인
 - [ ] `pnpm start:ch02` → 브라우저 OAuth 흐름 완주 → `x-auth-power: password_exposures=0, scope=orders:read` 확인
 - [ ] `pnpm start:ch03` → DevTools에서 `code_verifier` sessionStorage 확인, `/token`에 `client_secret` 없음 확인
-- [ ] `pnpm start:ch04` → 콘솔에 `grant=client_credentials, sub=client:billing-batch` 출력 후 프로세스 종료
-- [ ] `pnpm start:ch05` → ID Token 서명 검증 통과 + `sub`, `email` 콘솔 출력
-- [ ] `pnpm start:ch06` → UserInfo 호출 성공 + `userinfo_called=1` 확인
+- [ ] `pnpm start:ch04` → ID Token 서명 검증 통과 + `sub`, `email` 콘솔 출력
+- [ ] `pnpm start:ch05` → UserInfo 호출 성공 + `userinfo_called=1` 확인
 - [ ] 모든 챕터에서 `password_exposures=0` (Ch01 제외)
 - [ ] JWKS public key 캐싱 확인 (auth-server 재시작 없이 resource-server가 키 재사용)
 - [ ] Refresh Token rotation: 동일 refresh token 2회 사용 시 2번째는 401
