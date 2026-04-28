@@ -3,6 +3,7 @@ import { ContractDebugProvider } from './lib/contract-debug';
 import { Ch02ProductList } from './ch02-code-first-swagger/ProductList';
 import { Ch03ProductList } from './ch03-derived-spec-pain/ProductList';
 import { Ch04ProductList } from './ch04-design-first/ProductList';
+import { Ch05ProductList } from './ch05-parallel-blocking/ProductList';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ function ChapterContent() {
     case 'ch02': return <Ch02ProductList />;
     case 'ch03': return <Ch03ProductList />;
     case 'ch04': return <Ch04ProductList />;
+    case 'ch05': return <Ch05ProductList />;
     default: return <p>chapter {ACTIVE_CHAPTER} not yet implemented</p>;
   }
 }
