@@ -3,8 +3,8 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { CallCounterInterceptor } from './common/call-counter.interceptor';
 import { ContractStatusInterceptor } from './common/contract-status.interceptor';
 // import { Ch01DocDriftModule } from './ch01-doc-drift/ch01.module';
-import { Ch02CodeFirstSwaggerModule } from './ch02-code-first-swagger/ch02.module';
-// import { Ch03DerivedSpecPainModule } from './ch03-derived-spec-pain/ch03.module';
+// import { Ch02CodeFirstSwaggerModule } from './ch02-code-first-swagger/ch02.module';
+import { Ch03DerivedSpecPainModule } from './ch03-derived-spec-pain/ch03.module';
 // import { Ch04DesignFirstModule } from './ch04-design-first/ch04.module';
 // import { Ch05ParallelBlockingModule } from './ch05-parallel-blocking/ch05.module';
 // import { Ch06RuntimeDriftModule } from './ch06-runtime-drift/ch06.module';
@@ -13,7 +13,7 @@ import { Ch02CodeFirstSwaggerModule } from './ch02-code-first-swagger/ch02.modul
 
 @Module({
   imports: [
-    Ch02CodeFirstSwaggerModule,
+    Ch03DerivedSpecPainModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: CallCounterInterceptor },
