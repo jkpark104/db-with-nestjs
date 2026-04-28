@@ -1,7 +1,9 @@
-// Ch04 진입 시 paths 타입을 import해서 createClient<paths>()로 교체된다.
-// 본 단계에서는 baseUrl 주입과 prism 합성 헤더 로직만 미리 둔다.
+import createClient from 'openapi-fetch';
+import type { paths } from '@contracts/generated';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
+
+export const apiClient = createClient<paths>({ baseUrl: BASE_URL });
 
 export function isPrismMockBaseUrl(): boolean {
   try {

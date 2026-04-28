@@ -1,0 +1,105 @@
+openapi: 3.1.0
+info:
+  title: OAS Lecture API
+  version: 1.0.0
+  description: 학습용 이커머스 API (Single Source of Truth)
+servers:
+  - url: http://localhost:3000
+security: []
+tags:
+  - { name: products, description: 상품 }
+  - { name: users,    description: 사용자 }
+  - { name: orders,   description: 주문 }
+paths:
+  /products:
+    get:
+      tags: [products]
+      summary: 상품 목록
+      operationId: listProducts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Product' }
+  /products/{id}:
+    get:
+      tags: [products]
+      summary: 상품 단건 조회
+      operationId: getProductById
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+              examples:
+                sample:
+                  value: { id: 1, name: "사이다 1.5L", priceInWon: 2900, stock: 42, description: "탄산음료" }
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /users/{id}:
+    get:
+      tags: [users]
+      summary: 사용자 단건 조회
+      operationId: getUserById
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '404': { description: Not Found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+components:
+  schemas:
+    Product:
+      type: object
+      required: [id, name, priceInWon, stock, description, createdAt]
+      properties:
+        id:          { type: integer, minimum: 1 }
+        name:        { type: string, minLength: 1 }
+        priceInWon:  { type: integer, minimum: 0, description: "KRW 정수" }
+        stock:       { type: integer, minimum: 0 }
+        description: { type: string }
+        createdAt:   { type: string, format: date-time }
+    User:
+      type: object
+      required: [id, email, name, createdAt]
+      properties:
+        id:        { type: integer, minimum: 1 }
+        email:     { type: string, format: email }
+        name:      { type: string, minLength: 1 }
+        createdAt: { type: string, format: date-time }
+    OrderStatus:
+      type: string
+      enum: [PENDING, PAID, SHIPPED, DELIVERED, CANCELLED]
+    Order:
+      type: object
+      required: [id, userId, status, totalAmountInWon, createdAt]
+      properties:
+        id:               { type: integer, minimum: 1 }
+        userId:           { type: integer, minimum: 1 }
+        status:           { $ref: '#/components/schemas/OrderStatus' }
+        totalAmountInWon: { type: integer, minimum: 0 }
+        createdAt:        { type: string, format: date-time }
+    OrderItem:
+      type: object
+      required: [id, orderId, productId, quantity, unitPriceInWon]
+      properties:
+        id:             { type: integer, minimum: 1 }
+        orderId:        { type: integer, minimum: 1 }
+        productId:      { type: integer, minimum: 1 }
+        quantity:       { type: integer, minimum: 1 }
+        unitPriceInWon: { type: integer, minimum: 0 }
+    ErrorResponse:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode: { type: integer }
+        message:    { type: string }
+        error:      { type: string }
